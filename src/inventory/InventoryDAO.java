@@ -64,6 +64,8 @@
  *    - Accept a medicine name and a new moving type.
  *    - Validate that the type is strictly either 'FAST' or 'SLOW' (case-insensitive).
  *    - Update the 'moving_type' across ALL batches belonging to that medicine name.
+ *    - If updated, re-evaluate the Total Stock Alert for this medicine against 
+ *      the new moving type threshold.
  *    - Return true if at least one row was updated.
  * 
  * 7. DEDUCT STOCK (FOR SALES / BILLING):
@@ -72,7 +74,7 @@
  *      stock_quantity is greater than or equal to quantitySold (prevent negative stock).
  *    - CRITICAL: If the update succeeds, fetch the updated medicine record and 
  *      immediately run the Total Stock Alert check to see if stock dropped 
- *      below the threshold.
+ *      below the 50% threshold.
  *    - Return true if stock was successfully deducted.
  * 
  * 8. CLEAR EXPIRED BATCH STOCK:
@@ -96,13 +98,15 @@
  *        * If expiring within 7 months (exp_date <= today + 7 months): Send an 
  *          "EXPIRY_WARNING" notification suggesting company re-export.
  * 
- * B. TOTAL ACTIVE STOCK ALERT LOGIC:
+ * B. TOTAL ACTIVE STOCK ALERT LOGIC (50% RESTOCK RULE):
  *    - Calculate the SUM of 'stock_quantity' for all non-expired batches 
  *      (stock_quantity > 0 AND exp_date > today) of that medicine name.
- *    - Determine thresholds based on Moving Type:
- *        * If "FAST": Low threshold = 100 units | Suggested restock = 1000 units.
- *        * If "SLOW": Low threshold = 15 units  | Suggested restock = 100 units.
- *    - If total active stock <= low threshold, send a "LOW_STOCK" notification 
- *      stating the current total and the suggested restock amount.
+ *    - Restocking is triggered whenever active stock drops below 50% of the 
+ *      standard stock capacity:
+ *        * If "FAST": Standard capacity = 1000 units -> Alert when active stock < 500 units.
+ *        * If "SLOW": Standard capacity = 100 units  -> Alert when active stock < 50 units.
+ *    - If total active stock < half-stock threshold, send a "LOW_STOCK" 
+ *      notification showing the current stock and the suggested restock amount 
+ *      needed to restore full capacity (standard capacity - current active stock).
  * ============================================================================
  */
