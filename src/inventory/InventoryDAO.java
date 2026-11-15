@@ -317,6 +317,7 @@ public class InventoryDAO {
                        "LEFT JOIN (" +
                        "    SELECT bi.medicine_name, SUM(bi.quantity) AS total_qty " +
                        "    FROM bill_item bi " +
+                       "    JOIN inventory i ON bi.medicine_id = i.medicine_id " + 
                        "    JOIN bills b ON bi.bill_id = b.bill_id " +
                        "    WHERE b.create_at >= DATEADD(day, -7, GETDATE()) " +
                        "    GROUP BY bi.medicine_name" +
