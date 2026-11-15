@@ -5,6 +5,7 @@
  * PURPOSE:
  * Handle all database operations related to creating customer bills, batch-wise
  * FEFO (First Expired, First Out) stock deduction, discounts, free issues,
+ * triggering automatic moving-type updates & low-stock alerts after billing,
  * bill cancellations with stock reversal, and retrieving billing details.
  * 
  * ----------------------------------------------------------------------------
@@ -60,9 +61,14 @@
  *           session staff ID as cashier_id) and retrieve the generated bill_id.
  *        b) Batch-insert all finalized batch line items into 'bill_item'.
  *      * COMMIT TRANSACTION (or rollback if any error occurs).
- *    - POST-BILLING ALERTS: After committing, check total remaining stock for
- *      each billed medicine via InventoryDAO to trigger low-stock alerts if
- *      needed (catch alert errors separately so they do not fail the bill).
+ *    - POST-BILLING VELOCITY & STOCK ALERTS (OUTSIDE TRANSACTION):
+ *      * After committing the bill, wrap the following steps in a separate
+ *        try-catch block so any alert error never fails a completed bill:
+ *        a) First, trigger automatic moving-type classification (FAST / SLOW)
+ *           based on 7-day sales velocity via InventoryDAO.
+ *        b) Next, fetch each billed medicine's updated record and evaluate its
+ *           total remaining stock against the updated moving type (50% restock
+ *           threshold rule) via InventoryDAO to trigger low-stock alerts.
  *    - Return the generated bill_id.
  * 
  * 2. CANCEL AN EXISTING BILL (OWNER ONLY + STOCK REVERSAL):
