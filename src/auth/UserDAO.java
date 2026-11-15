@@ -1,74 +1,46 @@
 /*
  * ============================================================================
- * FILE: UserDAO.java (Package: auth)
+ * FEATURE: Fast / Slow Moving Classification & Inventory Reorder Logic
  * ============================================================================
  * PURPOSE:
- * Handle all database operations related to staff authentication, account 
- * registration, role/status management, password updates, and owner overrides.
+ * Automatically categorize medicines based on weekly sales volume and trigger 
+ * low-stock reorder alerts when inventory drops below 50% of normal capacity.
  * 
  * ----------------------------------------------------------------------------
- * GENERAL RULES & SECURITY:
+ * BUSINESS RULES & THRESHOLDS:
  * ----------------------------------------------------------------------------
- * - Always use PreparedStatements to prevent SQL injection.
- * - Always validate inputs (check for nulls or empty strings) before running 
- *   any database queries.
- * - NEVER store or return actual passwords inside StaffMember objects when 
- *   loading user data into the session or returning staff lists (pass an empty 
- *   string "" for the password field).
- * - Always check if the database connection is null before executing queries.
+ * 1. FAST MOVING MEDICINES:
+ *    - Condition: Weekly sales strictly greater than 300 units (> 300 units/week).
+ *    - Normal Stock Capacity: 5,000 units.
+ *    - Reorder Point (50% Rule): Trigger a restock alert when current stock 
+ *      drops below 2,500 units (< 2,500).
+ * 
+ * 2. SLOW MOVING MEDICINES:
+ *    - Condition: Weekly sales equal to or less than 300 units (<= 300 units/week).
+ *    - Normal Stock Capacity: 200 units.
+ *    - Reorder Point (50% Rule): Trigger a restock alert when current stock 
+ *      drops below 100 units (< 100).
  * 
  * ----------------------------------------------------------------------------
- * WHAT THIS FILE MUST DO (REQUIRED METHODS & LOGIC):
+ * WHAT THIS LOGIC MUST DO:
  * ----------------------------------------------------------------------------
- * 1. USER LOGIN:
- *    - Accept Staff ID and Password.
- *    - Check the database for a matching record where the account status is 
- *      strictly 'ACTIVE'.
- *    - If valid: Create a StaffMember object (without the password), save it 
- *      to the active UserSession, and return the object.
- *    - If invalid, empty, or inactive: Throw an InvalidStaffIdException.
+ * 1. CALCULATE WEEKLY SALES:
+ *    - Query the sales/invoice history for each medicine over the past 7 days 
+ *      to get the total units (tablets/items) sold.
  * 
- * 2. REGISTER NEW STAFF (OWNER ONLY):
- *    - First, verify that the currently logged-in user is an 'OWNER' via 
- *      UserSession. If not, throw an UnauthorizedAccessException.
- *    - Validate that Staff ID and Password are provided.
- *    - Default the role to 'CASHIER' if left empty, and ensure it is strictly 
- *      either 'OWNER' or 'CASHIER'.
- *    - Default the status to 'ACTIVE' if left empty, and ensure it is strictly 
- *      either 'ACTIVE' or 'INACTIVE'.
- *    - Insert the new staff record into the database and return true if successful.
+ * 2. ASSIGN MOVEMENT CATEGORY:
+ *    - If 7-day sales > 300 -> Mark/treat the item as "FAST_MOVING".
+ *    - Otherwise (<= 300)  -> Mark/treat the item as "SLOW_MOVING".
  * 
- * 3. UPDATE STAFF ACCOUNT STATUS (OWNER ONLY):
- *    - Verify that the current user is an 'OWNER'. Otherwise, throw an 
- *      UnauthorizedAccessException.
- *    - Accept a Staff ID and a new status ('ACTIVE' or 'INACTIVE').
- *    - IMPORTANT SAFEGUARD: Prevent the currently logged-in Owner from 
- *      deactivating ('INACTIVE') their own account.
- *    - Update the status in the database and return true if successful.
+ * 3. CHECK REORDER STATUS & SUGGEST RESTOCK QUANTITY:
+ *    - Compare the medicine's current stock against its category's 50% threshold:
+ *      * For FAST_MOVING: If current stock < 2,500 -> Flag as "LOW STOCK".
+ *        (Suggested reorder amount = 5,000 - current stock).
+ *      * For SLOW_MOVING: If current stock < 100 -> Flag as "LOW STOCK".
+ *        (Suggested reorder amount = 200 - current stock).
  * 
- * 4. GET ALL STAFF MEMBERS (OWNER ONLY):
- *    - Verify that the current user is an 'OWNER'. Otherwise, throw an 
- *      UnauthorizedAccessException.
- *    - Fetch all staff records from the database (excluding passwords) and 
- *      return them as a List of StaffMember objects.
- * 
- * 5. CHANGE PASSWORD:
- *    - Accept Staff ID, old password, and new password.
- *    - Authorization check: Allow the action ONLY if the logged-in user is 
- *      changing their own password, OR if the logged-in user is an 'OWNER'. 
- *      Otherwise, throw an UnauthorizedAccessException.
- *    - Update the password in the database only if both the Staff ID and the 
- *      old password match.
- *    - If no rows are updated (meaning old password was wrong or ID doesn't 
- *      exist), throw an InvalidStaffIdException.
- * 
- * 6. ONE-TIME OWNER OVERRIDE VERIFICATION:
- *    - Accept an Owner's Staff ID and Password (used when a Cashier needs 
- *      temporary Owner approval for restricted actions).
- *    - Check the database for a matching record where role is 'OWNER' and 
- *      status is 'ACTIVE'.
- *    - CRITICAL: Do NOT overwrite or change the current UserSession. Just 
- *      return the verified Owner's StaffMember object (or return null if 
- *      verification fails).
+ * 4. TRIGGER ALERTS / UI UPDATES:
+ *    - Whenever stock is updated (e.g., after a sale) or during inventory checks, 
+ *      run this check and send a low-stock alert if the reorder threshold is crossed.
  * ============================================================================
  */
