@@ -4,8 +4,8 @@
  * ============================================================================
  * PURPOSE:
  * Handle all database operations related to medicine inventory, batch tracking,
- * FEFO (First Expired, First Out) dispensing, stock deductions, and automated 
- * expiry/low-stock notifications.
+ * FEFO (First Expired, First Out) dispensing, stock deductions, automated 
+ * FAST/SLOW moving classification, and expiry/low-stock notifications.
  * 
  * ----------------------------------------------------------------------------
  * GENERAL RULES & DATABASE STANDARDS:
@@ -15,8 +15,8 @@
  *   numbers) before running any database queries.
  * - Always verify that the database connection is not null before executing 
  *   queries (throw an SQLException if null).
- * - Use MSSQL date functions (e.g., CAST(GETDATE() AS DATE)) when checking for 
- *   non-expired stock directly in SQL queries.
+ * - Use MSSQL date functions (e.g., CAST(GETDATE() AS DATE), DATEADD) when 
+ *   filtering non-expired stock or sales history directly in SQL queries.
  * - Trim extra spaces from string inputs (medicine names, batch numbers, etc.).
  * 
  * ----------------------------------------------------------------------------
@@ -60,13 +60,25 @@
  *    - Accept a 'medicine_id' and return the matching Medicine object, or null 
  *      if not found.
  * 
- * 6. UPDATE MOVING TYPE (FAST / SLOW):
+ * 6A. MANUAL MOVING TYPE UPDATE (FAST / SLOW):
  *    - Accept a medicine name and a new moving type.
  *    - Validate that the type is strictly either 'FAST' or 'SLOW' (case-insensitive).
  *    - Update the 'moving_type' across ALL batches belonging to that medicine name.
- *    - If updated, re-evaluate the Total Stock Alert for this medicine against 
- *      the new moving type threshold.
+ *    - If updated, immediately re-evaluate the Total Stock Alert for this 
+ *      medicine against the new moving type threshold.
  *    - Return true if at least one row was updated.
+ * 
+ * 6B. AUTO MOVING TYPE CLASSIFICATION (BASED ON 7-DAY SALES):
+ *    - Automatically classify every medicine in the inventory as 'FAST' or 
+ *      'SLOW' based on sales volume over the last 7 days.
+ *    - Join 'bill_item', 'bills', and 'inventory' tables to calculate total 
+ *      units sold per medicine name where the bill creation date is within 
+ *      the last 7 days (create_at >= 7 days ago).
+ *    - Classification Rule:
+ *        * Total units sold in last 7 days >= 100 -> Set moving_type to 'FAST'
+ *        * Total units sold in last 7 days < 100  -> Set moving_type to 'SLOW'
+ *    - Note: This method is designed to be called on System Startup and by 
+ *      BillingDAO after saving a new bill.
  * 
  * 7. DEDUCT STOCK (FOR SALES / BILLING):
  *    - Accept a 'medicine_id' and 'quantitySold'. Validate that quantitySold > 0.
@@ -82,6 +94,8 @@
  *      physically removing expired items from shelves).
  * 
  * 9. SYSTEM STARTUP ALERT SCAN:
+ *    - FIRST, run the Auto Moving Type Classification (6B) so all medicines 
+ *      have up-to-date 'FAST' or 'SLOW' tags before checking stock levels.
  *    - Fetch all batches where stock_quantity > 0.
  *    - Loop through every batch and evaluate its expiry date individually.
  *    - Also evaluate total active stock per unique medicine name (use a Set 
