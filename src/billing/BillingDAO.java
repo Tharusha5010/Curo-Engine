@@ -106,3 +106,81 @@
  * - Deduct a specific quantity from a batch in 'inventory' using an active transaction.
  * ============================================================================
  */
+
+
+package billing;
+
+import auth.UserDAO;
+import database.DBConnection;
+import exceptions.ExpiredMedicineException;
+import exceptions.InvalidStaffIdException;
+import exceptions.OutOfStockException;
+import exceptions.UnauthorizedAccessException;
+import inventory.InventoryDAO;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
+public class BillingDAO {
+
+    // Instantiate UserDAO to handle security and role verification
+    private final UserDAO userDao = new UserDAO();
+    // Instantiate InventoryDAO to handle inventory operations
+    private final InventoryDAO inventoryDao = new InventoryDAO();
+    // Instantiate InventoryDAO to handle inventory operations
+    //Medicine med = Medicine.getMedicineById(medicineId);
+
+
+    // Free Issue (FEFO stock reduction)
+    public boolean freeIssue(int medicineId, int quantity, String staffId, String password) 
+            throws SQLException, UnauthorizedAccessException, InvalidStaffIdException, ExpiredMedicineException, OutOfStockException {
+        
+        //Centralized validation from UserDAO( Handle null check, active status, and owner role automatically)
+        userDao.verifyOwnerOverride(staffId, password);
+
+        // Fetch the medicine record to validate stock and expiration
+        inventoryDao.validateStockAvailability(medicineId, quantity);
+
+        boolean success = inventoryDao.reduceStockByFEFO(medicineId, quantity);
+
+        if (success) {
+            System.out.println("Free Issue Successfully processed! via FEFO for medicine ID: " + medicineId);
+        }
+    
+        return success;
+    }
+
+    // Override Prescription (Restricted to OWNER)
+    public boolean overridePrescription(int medicineId, String staffId, String password) 
+            throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
+        
+        //Centralized validation from UserDAO( Handle null check, active status, and owner role automatically)
+        userDao.verifyOwnerOverride(staffId, password);
+
+        // Business logic for prescription override logged or processed here
+        System.out.println("[Prescription Override] Authorized and processed by Owner ID: " + staffId);
+        return true; 
+    }
+
+    // ---------- 3. Cancel Bill ----------
+    // Cancel a bill within the allowed time frame and return stock to inventory (Restricted to OWNER)
+    public boolean cancelBill(int billId, String staffId, String password) 
+            throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
+        
+        //Centralized validation from UserDAO( Handle null check, active status, and owner role automatically)
+        userDao.verifyOwnerOverride(staffId, password);
+
+        String sql = "UPDATE bills SET status_ = 'CANCELLED' WHERE bill_id = ?";
+
+        try (Connection con = DBConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setInt(1, billId);
+            
+            int rowsAffected = ps.executeUpdate();
+            System.out.println("[Cancel Bill] Bill ID " + billId + " successfully cancelled by Owner.");
+            
+            // Note: You can add logic here to restore quantities back to your inventory table using FEFO/Batch tracking.
+            return rowsAffected > 0;
+        }
+    }
+}

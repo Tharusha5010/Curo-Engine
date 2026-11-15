@@ -38,3 +38,94 @@
  *      refresh (again, safely on the Swing UI thread).
  * ============================================================================
  */
+
+
+package alerts;
+
+import inventory.InventoryDAO;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import models.Medicine;
+import models.Notification;
+
+public class NotificationManagaer {
+
+    // Instantiate InventoryDAO to handle inventory operations
+    private final InventoryDAO inventoryDAO = new InventoryDAO();
+    
+    // In-memory list for runtime/session-based dynamic alerts
+    private static final List<Notification> inMemoryAlerts = new ArrayList<>();
+
+    public List<Notification> fetchLiveNotifications() {
+        List<Notification> alerts = new ArrayList<>(inMemoryAlerts);
+
+        try {
+            // Process Low Stock items (getLowStockMedicines method)(threshold assign to 10 which can change.)
+            List<Medicine> lowStockList = inventoryDAO.getLowStockMedicines(10);
+            for (Medicine med : lowStockList) {
+                String name = med.getMedicineName();
+                String batch = med.getBatchNumber();
+                int qty = med.getStockQuantity();
+
+                if (inventoryDAO.isOutOfStock(med)) {
+                    alerts.add(new Notification("OUT OF STOCK", name, "Batch " + batch + " is completely out of stock!"));
+                } else if (qty < 10) {
+                    alerts.add(new Notification("LOW STOCK", name, "Stock is low (" + qty + " units remaining)."));
+                }
+            }
+
+            // Process Expiring Soon items (getExpiringSoonMedicines method) (7-month rule)
+            List<Medicine> expiringSoonList = inventoryDAO.getExpiringSoonMedicines();
+            for (Medicine med : expiringSoonList) {
+                String name = med.getMedicineName();
+                String batch = med.getBatchNumber();
+                if (med.getExpDate() != null) {
+                    LocalDate expDate = med.getExpDate().toLocalDate();
+                    alerts.add(new Notification("EXPIRING SOON", name, "Batch " + batch + " expires on " + expDate + ". (Within 7 months)"));
+                }
+            }
+
+            // Process Already Expired items (getExpiredMedicines method)
+            List<Medicine> expiredList = inventoryDAO.getExpiredMedicines();
+            for (Medicine med : expiredList) {
+                String name = med.getMedicineName();
+                String batch = med.getBatchNumber();
+                if (med.getExpDate() != null) {
+                    LocalDate expDate = med.getExpDate().toLocalDate();
+                    alerts.add(new Notification("EXPIRED", name, "Batch " + batch + " expired on " + expDate + "!"));
+                }
+            }
+
+        } catch (Exception e) {
+            System.err.println("NotificationManager Error Fetching Live Alerts: " + e.getMessage());
+        }
+
+        return alerts;
+    }
+
+    //Adds a dynamic runtime alert (e.g., login success, stock added) to session memory.
+    public static void addDynamicAlert(String type, String title, String message) {
+        inMemoryAlerts.add(0, new Notification(type, title, message));
+    }
+
+    //Helper method to evaluate a single medicine object instantly in memory 
+    //(zero database overhead for fast UI table row checks).
+    public void evaluateSingleItem(Medicine med) {
+        if (med == null) {
+            return;
+        }
+
+        if (inventoryDAO.isOutOfStock(med)) {
+            addDynamicAlert("OUT OF STOCK", med.getMedicineName(), "Item is currently out of stock.");
+        }
+        
+        else if (inventoryDAO.isExpired(med)) {
+            addDynamicAlert("EXPIRED", med.getMedicineName(), "Batch " + med.getBatchNumber() + " is expired!");
+        }
+        
+        else if (inventoryDAO.isExpiringSoon(med)) {
+            addDynamicAlert("EXPIRING SOON", med.getMedicineName(), "Batch " + med.getBatchNumber() + " expires within 7 months.");
+        }
+    }
+}
