@@ -1,13 +1,17 @@
 package inventory;
 
-import alerts.NotificationManagaer;
-import auth.UserDAO;
+
+
+import alerts.NotificationManager;
+import auth.UserSession;
 import database.DBConnection;
-import exceptions.ExpiredMedicineException;
-import exceptions.InvalidStaffIdException;
-import exceptions.OutOfStockException;
 import exceptions.UnauthorizedAccessException;
+import models.Medicine;
+import models.StaffMember;
+
+
 import java.sql.Connection;
+import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -16,32 +20,52 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import models.Medicine;
+
+
 
 public class InventoryDAO {
 
-    // Instantiate UserDAO to handle security and role verification
-    private final UserDAO userDao = new UserDAO();
-
-    // Helper method to map a ResultSet row to a Medicine object.
-    private Medicine mapResultSetToMedicine(ResultSet rs) throws SQLException {
-        Medicine med = new Medicine();
-        med.setMedicineId(rs.getInt("medicine_id"));
-        med.setMedicineName(rs.getString("medicine_name"));
-        med.setCompanyName(rs.getString("company_name"));
-        med.setBatchNumber(rs.getString("batch_number"));
-        med.setUnitPrice(rs.getDouble("unit_price"));
-        med.setStockQuantity(rs.getInt("stock_quantity"));
-        med.setStockDate(rs.getDate("stock_date"));
-        med.setExpDate(rs.getDate("exp_date"));
-        med.setRequiresPrescription(rs.getBoolean("requires_prescription"));
-        med.setMovingType(rs.getString("moving_type"));
-        return med;
+    //Get valid database connection and verify it is not null
+    private Connection getValidConnection() throws SQLException {
+        Connection conn = DBConnection.getConnection();
+        if (conn == null) {
+            throw new SQLException("Database connection is null!");
+        }
+        return conn;
     }
 
-    // 1. Inserts a new medicine batch into inventory table (owner only).
-    public boolean addMedicineBatch(Medicine med, String staffId) throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
-        userDao.verifyActiveOwner(staffId);
+    //Verify that the currently logged-in user is an ACTIVE OWNER
+    private void verifyOwnerAccess() throws UnauthorizedAccessException {
+        StaffMember currentUser = UserSession.getInstance().getCurrentUser();
+        if (currentUser == null || !"OWNER".equalsIgnoreCase(currentUser.getRole())
+                || !"ACTIVE".equalsIgnoreCase(currentUser.getStatus())) {
+            throw new UnauthorizedAccessException("Access Denied: Only an active Owner can perform this inventory action.");
+        }
+    }
+
+    
+
+    //Map a ResultSet row to a Medicine object (Helper method)
+    private Medicine mapRowToMedicine(ResultSet rs) throws SQLException {
+        return new Medicine(
+            rs.getInt("medicine_id"),
+            rs.getString("medicine_name"),
+            rs.getString("company_name"),
+            rs.getString("batch_number"),
+            rs.getDouble("unit_price"),
+            rs.getInt("stock_quantity"),
+            rs.getDate("stock_date"),
+            rs.getDate("exp_date"),
+            rs.getBoolean("requires_prescription"),
+            rs.getString("moving_type")
+        );
+    }
+
+
+    
+    //Insert a new medicine batch into inventory table (Owner Only)
+    public boolean addMedicineBatch(Medicine med) throws SQLException, UnauthorizedAccessException {
+        verifyOwnerAccess();
 
         if (med == null) {
             throw new IllegalArgumentException("Medicine object cannot be null.");
@@ -53,431 +77,423 @@ public class InventoryDAO {
             throw new IllegalArgumentException("Batch number cannot be empty.");
         }
 
-        String companyName = (med.getCompanyName() == null || med.getCompanyName().trim().isEmpty()) ? "Unknown" : med.getCompanyName().trim();
-        String movingType = med.getMovingType();
-        if (movingType == null || (!movingType.equalsIgnoreCase("FAST") && !movingType.equalsIgnoreCase("SLOW"))) {
+        //Set safe defaults for optional fields
+        String companyName = (med.getCompanyName() != null && !med.getCompanyName().trim().isEmpty())
+                             ? med.getCompanyName().trim() : "Unknown";
+        String movingType = (med.getMovingType() != null && !med.getMovingType().trim().isEmpty())
+                            ? med.getMovingType().trim().toUpperCase() : "SLOW";
+        if (!movingType.equals("FAST") && !movingType.equals("SLOW")) {
             movingType = "SLOW";
-        } else {
-            movingType = movingType.toUpperCase();
         }
-        java.sql.Date stockDate = (med.getStockDate() != null) ? med.getStockDate() : java.sql.Date.valueOf(LocalDate.now());
-        
-        String query = "INSERT INTO inventory (medicine_name, company_name, batch_number, unit_price, stock_quantity, stock_date, exp_date, requires_prescription, moving_type) " +
-                       "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
+        String sql = "INSERT INTO inventory (medicine_name, company_name, batch_number, unit_price, " +
+                     "stock_quantity, stock_date, exp_date, requires_prescription, moving_type) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-            stmt.setString(1, med.getMedicineName().trim());
-            stmt.setString(2, companyName);
-            stmt.setString(3, med.getBatchNumber().trim());
-            stmt.setDouble(4, med.getUnitPrice());
-            stmt.setInt(5, med.getStockQuantity());
-            stmt.setDate(6, stockDate);
-            stmt.setDate(7, med.getExpDate());
-            stmt.setBoolean(8, med.isRequiresPrescription());
-            stmt.setString(9, movingType);
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            int rowsInserted = stmt.executeUpdate();
-            
-            if (rowsInserted > 0) {
-                evaluateBatchExpiry(med);
-                evaluateTotalStock(med.getMedicineName().trim());
-                return true;
+            pstmt.setString(1, med.getMedicineName().trim());
+            pstmt.setString(2, companyName);
+            pstmt.setString(3, med.getBatchNumber().trim());
+            pstmt.setDouble(4, med.getUnitPrice());
+            pstmt.setInt(5, med.getStockQuantity());
+            pstmt.setDate(6, med.getStockDate() != null ? med.getStockDate() : Date.valueOf(LocalDate.now()));
+            pstmt.setDate(7, med.getExpDate());
+            pstmt.setBoolean(8, med.isRequiresPrescription());
+            pstmt.setString(9, movingType);
+
+            boolean inserted = pstmt.executeUpdate() > 0;
+
+            //Immediately trigger batch expiry and total stock alerts if inserted
+            if (inserted) {
+                med.setMovingType(movingType);
+                evaluateBatchExpiryAlert(med);
+                evaluateTotalStockAlert(med.getMedicineName().trim(), movingType);
             }
-        } catch (SQLException e) {
-            System.err.println("Error Adding Medicine Record: " + e.getMessage());
-            throw e;
+            return inserted;
         }
-        return false;
     }
 
-    // 2. Live search by medicine name or batch number for auto-suggest support.
-    public List<Medicine> searchMedicinesByName(String keyword) {
-        List<Medicine> medicineList = new ArrayList<>();
+    
+
+    //Auto-Suggest / Smart Search for Billing POS (returns unique active medicine names)
+    public List<String> searchMedicineNamesAutoSuggest(String keyword) throws SQLException {
+        List<String> suggestions = new ArrayList<>();
         if (keyword == null || keyword.trim().isEmpty()) {
-            return medicineList;
+            return suggestions;
         }
 
-        String query = "SELECT MIN(medicine_id) AS medicine_id, medicine_name, MIN(company_name) AS company_name, " +
-                       "MIN(batch_number) AS batch_number, MIN(unit_price) AS unit_price, SUM(stock_quantity) AS stock_quantity, " +
-                       "MIN(stock_date) AS stock_date, MIN(exp_date) AS exp_date, MIN(requires_prescription) AS requires_prescription, " +
-                       "MIN(moving_type) AS moving_type FROM inventory " +
-                       "WHERE (medicine_name LIKE ? OR batch_number LIKE ?) AND stock_quantity > 0 AND exp_date > CAST(GETDATE() AS DATE) " +
-                       "GROUP BY medicine_name ORDER BY medicine_name ASC";
-                       
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
+        String sql = "SELECT DISTINCT medicine_name FROM inventory " +
+                     "WHERE medicine_name LIKE ? AND stock_quantity > 0 AND exp_date > CAST(GETDATE() AS DATE) " +
+                     "ORDER BY medicine_name ASC";
 
-            String searchPattern = keyword.trim() + "%";
-            stmt.setString(1, searchPattern);
-            stmt.setString(2, searchPattern);
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            try (ResultSet rs = stmt.executeQuery()) {
+            pstmt.setString(1, keyword.trim() + "%");
+
+            try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
-                    medicineList.add(mapResultSetToMedicine(rs));
+                    suggestions.add(rs.getString("medicine_name"));
                 }
             }
-        } catch (SQLException e) {
-            System.err.println("Error Searching Medicine Records: " + e.getMessage());
         }
-
-        return medicineList;
+        return suggestions;
     }
 
-    // 3. Reduces stock using FEFO and Stops Billing Expired Medicines.
-    public boolean reduceStockByFEFO(int medicineId, int requestedQuantity) throws SQLException, ExpiredMedicineException {
-        if (requestedQuantity <= 0) {
-            throw new IllegalArgumentException("Requested quantity must be greater than zero.");
+    
+
+    //Search inventory records by medicine name or batch number (for Inventory Table UI)
+    public List<Medicine> searchInventoryByNameOrBatch(String keyword) throws SQLException {
+        List<Medicine> results = new ArrayList<>();
+        if (keyword == null || keyword.trim().isEmpty()) {
+            return getAllInventory();
         }
 
-        String selectQuery = "SELECT medicine_name, batch_number, stock_quantity, exp_date FROM inventory "
-                            + "WHERE medicine_id = ? AND stock_quantity > 0 "
-                            + "ORDER BY exp_date ASC";
-                       
-        String updateQuery = "UPDATE inventory SET stock_quantity = ? WHERE batch_number = ?";
-        LocalDate today = LocalDate.now();
-        String targetMedicineName = null;
+        String sql = "SELECT * FROM inventory " +
+                     "WHERE medicine_name LIKE ? OR batch_number LIKE ? " +
+                     "ORDER BY medicine_name ASC, exp_date ASC";
 
-        try (Connection conn = DBConnection.getConnection()) {
-            conn.setAutoCommit(false);
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            try (PreparedStatement selectStmt = conn.prepareStatement(selectQuery);
-                PreparedStatement updateStmt = conn.prepareStatement(updateQuery)) {
+            String pattern = "%" + keyword.trim() + "%";
+            pstmt.setString(1, pattern);
+            pstmt.setString(2, pattern);
 
-                selectStmt.setInt(1, medicineId);
-            
-                try (ResultSet rs = selectStmt.executeQuery()) {
-                    int remainingToDeduct = requestedQuantity;
-
-                    while (rs.next() && remainingToDeduct > 0) {
-                        targetMedicineName = rs.getString("medicine_name");
-                        String batchNumber = rs.getString("batch_number");
-                        int currentStock = rs.getInt("stock_quantity");
-                        java.sql.Date expDateSql = rs.getDate("exp_date");
-
-                        if (expDateSql != null){
-                            LocalDate expiration = expDateSql.toLocalDate();
-                            if (expiration.isBefore(today) || expiration.isEqual(today)) {
-                                conn.rollback();
-                                throw new ExpiredMedicineException("Billing Blocked: Cannot dispense expired batch " + batchNumber + " Expired on: " + expiration + ").");
-                            }
-                        }
-
-                        int deductFromThisBatch = Math.min(currentStock, remainingToDeduct);
-                        int newStock = currentStock - deductFromThisBatch;
-
-                        updateStmt.setInt(1, newStock);
-                        updateStmt.setString(2, batchNumber);
-                        updateStmt.executeUpdate();
-
-                        remainingToDeduct -= deductFromThisBatch;
-                    }
-
-                    if (remainingToDeduct > 0) {
-                        conn.rollback();
-                        throw new SQLException("Out of Stock: Insufficient inventory across batches to fulfill quantity.");
-                    }
-
-                    conn.commit();
-
-                    if (targetMedicineName != null) {
-                        evaluateTotalStock(targetMedicineName);
-                    }
-                    return true;
-                }
-            } catch (SQLException | ExpiredMedicineException e) {
-                conn.rollback();
-                throw e;
-            }
-        }
-    }
-
-    // 5. Get Single Batch By Id.
-    public Medicine getMedicineById(int medicineId) {
-        Medicine med = null;
-        String query = "SELECT * FROM inventory WHERE medicine_id = ?";
-
-        try (Connection conn = DBConnection.getConnection();
-            PreparedStatement stmt = conn.prepareStatement(query)) {
-            stmt.setInt(1, medicineId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    med = mapResultSetToMedicine(rs);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    results.add(mapRowToMedicine(rs));
                 }
             }
-        } catch (SQLException e) {
-            System.err.println("Error Fetching Medicine By ID: " + e.getMessage());
         }
-        return med;
+        return results;
     }
 
-    // Retrieves all available batches for a specific medicine name, sorted by FEFO
-    public List<Medicine> getBatchesForMedicineFEFO(String medicineName) {
-        List<Medicine> list = new ArrayList<>();
+    
+
+    //Retrieve valid batches for a medicine sorted by FEFO (earliest expiry date first)
+    public List<Medicine> getBatchesByMedicineNameFEFO(String medicineName) throws SQLException {
+        List<Medicine> batches = new ArrayList<>();
         if (medicineName == null || medicineName.trim().isEmpty()) {
-            return list;
+            return batches;
         }
 
-        String query = "SELECT * FROM inventory WHERE medicine_name = ? AND stock_quantity > 0 AND exp_date > GETDATE() ORDER BY exp_date ASC";
+        String sql = "SELECT * FROM inventory " +
+                     "WHERE medicine_name = ? AND stock_quantity > 0 AND exp_date > CAST(GETDATE() AS DATE) " +
+                     "ORDER BY exp_date ASC";
 
-        try (Connection conn = DBConnection.getConnection();
-            PreparedStatement stmt = conn.prepareStatement(query)) {
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            stmt.setString(1, medicineName.trim());
+            pstmt.setString(1, medicineName.trim());
 
-            try (ResultSet rs = stmt.executeQuery()) {
+            try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
-                    list.add(mapResultSetToMedicine(rs));
+                    batches.add(mapRowToMedicine(rs));
                 }
             }
-        } catch (SQLException e) {
-            System.err.println("Error Fetching FEFO Batches for Medicine: " + e.getMessage());
         }
-
-        return list;
+        return batches;
     }
 
-    // 4. Display all inventory records from MSSQL.
-    public List<Medicine> getAllInventory() {
-        List<Medicine> list = new ArrayList<>();
-        String query = "SELECT * FROM inventory ORDER BY medicine_name ASC, exp_date ASC";
+    
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query);
-             ResultSet rs = stmt.executeQuery()) {
+    //Retrieve all inventory batches (for Inventory Management Table)
+    public List<Medicine> getAllInventory() throws SQLException {
+        List<Medicine> inventoryList = new ArrayList<>();
+        String sql = "SELECT * FROM inventory ORDER BY medicine_name ASC, exp_date ASC";
+
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
 
             while (rs.next()) {
-                list.add(mapResultSetToMedicine(rs));
+                inventoryList.add(mapRowToMedicine(rs));
             }
-        } catch (SQLException e) {
-            System.err.println("Error Fetching Inventory Items: " + e.getMessage());
         }
-
-        return list;
+        return inventoryList;
     }
 
-    // Updates stock quantity for a specific medicine record by medicine_id (owner only).
-    public boolean updateQuantity(int medicineId, int newQty, String staffId) throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
-        userDao.verifyActiveOwner(staffId);
+    
 
-        String query = "UPDATE inventory SET stock_quantity = ? WHERE medicine_id = ?";
+    //Retrieve a single medicine batch by its ID
+    public Medicine getMedicineById(int medicineId) throws SQLException {
+        String sql = "SELECT * FROM inventory WHERE medicine_id = ?";
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            stmt.setInt(1, newQty);
-            stmt.setInt(2, medicineId);
+            pstmt.setInt(1, medicineId);
 
-            return stmt.executeUpdate() > 0 ;
-        } catch (SQLException e) {
-            System.err.println("Error Updating Quantity: " + e.getMessage());
-            return false;
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapRowToMedicine(rs);
+                }
+            }
         }
+        return null;
     }
 
-    // 6A. Updates a medicine's moving classification manually (FAST or SLOW) (owner only)
-    public boolean updateMovingType(String medicineName, String movingType, String staffId) throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
-        userDao.verifyActiveOwner(staffId);
+    
 
-        if (movingType == null || (!movingType.equalsIgnoreCase("FAST") && !movingType.equalsIgnoreCase("SLOW"))) {
+    //Manually update moving classification (FAST or SLOW) by medicine name (Owner Only)
+    public boolean updateMovingType(String medicineName, String movingType) throws SQLException, UnauthorizedAccessException {
+        verifyOwnerAccess();
+
+        if (medicineName == null || medicineName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Medicine name cannot be empty.");
+        }
+        String formattedType = (movingType != null) ? movingType.trim().toUpperCase() : "SLOW";
+        if (!formattedType.equals("FAST") && !formattedType.equals("SLOW")) {
             throw new IllegalArgumentException("Moving type must be strictly 'FAST' or 'SLOW'.");
         }
 
-        String normalizedType = movingType.toUpperCase();
-        String query = "UPDATE inventory SET moving_type = ? WHERE medicine_name = ?";
+        String sql = "UPDATE inventory SET moving_type = ? WHERE medicine_name = ?";
 
-        try (Connection conn = DBConnection.getConnection();
-            PreparedStatement stmt = conn.prepareStatement(query)) {
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            stmt.setString(1, normalizedType);
-            stmt.setString(2, medicineName.trim());
+            pstmt.setString(1, formattedType);
+            pstmt.setString(2, medicineName.trim());
 
-            int rowsUpdated = stmt.executeUpdate();
-            return rowsUpdated > 0;
-        } catch (SQLException e) {
-            System.err.println("Error Updating Moving Type: " + e.getMessage());
-            throw e;
+            boolean updated = pstmt.executeUpdate() > 0;
+
+            //Re-evaluate low stock alert against the new moving type threshold
+            if (updated) {
+                evaluateTotalStockAlert(medicineName.trim(), formattedType);
+            }
+            return updated;
         }
     }
 
-    public boolean updateMovingType(int medicineId, String movingType, String staffId) throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
+    
+
+    //Overload (Manually update moving classification using medicine_id) (Owner Only)
+    public boolean updateMovingType(int medicineId, String movingType) throws SQLException, UnauthorizedAccessException {
         Medicine med = getMedicineById(medicineId);
         if (med != null) {
-            return updateMovingType(med.getMedicineName(), movingType, staffId);
+            return updateMovingType(med.getMedicineName(), movingType);
         }
         return false;
     }
 
-    // 6B. AUTO MOVING TYPE CLASSIFICATION (BASED ON 7-DAY SALES)
-    public void updateMovingTypeAutomatically() {
-        String query = "UPDATE inv " +
-                       "SET inv.moving_type = CASE WHEN ISNULL(sales.total_qty, 0) >= 100 THEN 'FAST' ELSE 'SLOW' END " +
-                       "FROM inventory inv " +
-                       "LEFT JOIN (" +
-                       "    SELECT bi.medicine_name, SUM(bi.quantity) AS total_qty " +
-                       "    FROM bill_item bi " +
-                       "    JOIN inventory i ON bi.medicine_id = i.medicine_id " + 
-                       "    JOIN bills b ON bi.bill_id = b.bill_id " +
-                       "    WHERE b.create_at >= DATEADD(day, -7, GETDATE()) " +
-                       "    GROUP BY bi.medicine_name" +
-                       ") sales ON inv.medicine_name = sales.medicine_name";
+    
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            System.err.println("Error Auto-Updating Moving Type: " + e.getMessage());
+    //Auto-classify medicines as FAST (> 300 units sold in last 7 days) or SLOW
+    public void autoUpdateMovingTypes() throws SQLException {
+        String sql = "UPDATE inventory " +
+                     "SET moving_type = CASE " +
+                     "    WHEN ( " +
+                     "        SELECT ISNULL(SUM(bi.quantity), 0) " +
+                     "        FROM bill_item bi " +
+                     "        JOIN bills b ON bi.bill_id = b.bill_id " +
+                     "        JOIN inventory i2 ON bi.medicine_id = i2.medicine_id " +
+                     "        WHERE i2.medicine_name = inventory.medicine_name " +
+                     "          AND b.create_at >= DATEADD(DAY, -7, GETDATE()) " +
+                     "    ) > 300 THEN 'FAST' " +
+                     "    ELSE 'SLOW' " +
+                     "END";
+
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.executeUpdate();
         }
     }
 
-    // Deletes an inventory record by medicine_id (owner only).
-    public boolean deleteMedicine(int medicineId, String staffId) throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
-        userDao.verifyActiveOwner(staffId);
+    
 
-        String query = "DELETE FROM inventory WHERE medicine_id = ?";
+    //Deduct stock quantity during billing/sales (prevents negative stock)
+    public boolean deductStock(int medicineId, int quantitySold) throws SQLException {
+        if (quantitySold <= 0) {
+            throw new IllegalArgumentException("Quantity sold must be greater than zero.");
+        }
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
+        String sql = "UPDATE inventory SET stock_quantity = stock_quantity - ? " +
+                     "WHERE medicine_id = ? AND stock_quantity >= ?";
 
-            stmt.setInt(1, medicineId);
-            return stmt.executeUpdate() > 0;
-        } catch (SQLException e) {
-            System.err.println("Error Deleting Medicine: " + e.getMessage());
-            return false;
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, quantitySold);
+            pstmt.setInt(2, medicineId);
+            pstmt.setInt(3, quantitySold);
+
+            boolean updated = pstmt.executeUpdate() > 0;
+
+            //Check if total active stock dropped below the 50% threshold
+            if (updated) {
+                Medicine updatedMed = getMedicineById(medicineId);
+                if (updatedMed != null) {
+                    evaluateTotalStockAlert(updatedMed.getMedicineName(), updatedMed.getMovingType());
+                }
+            }
+            return updated;
         }
     }
 
-    // 8. Sets stock_quantity to 0 when physically removing expired items from shelves.
-    public boolean clearExpiredBatchStock(int medicineId, String staffId) throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
-        userDao.verifyActiveOwner(staffId);
+    
 
-        String query = "UPDATE inventory SET stock_quantity = 0 WHERE medicine_id = ?";
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
-            stmt.setInt(1, medicineId);
-            return stmt.executeUpdate() > 0;
+    //Update stock quantity directly for stock adjustments/corrections (Owner Only)
+    public boolean updateStockQuantity(int medicineId, int newQuantity) throws SQLException, UnauthorizedAccessException {
+        verifyOwnerAccess();
+
+        if (newQuantity < 0) {
+            throw new IllegalArgumentException("Stock quantity cannot be negative.");
+        }
+
+        String sql = "UPDATE inventory SET stock_quantity = ? WHERE medicine_id = ?";
+
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, newQuantity);
+            pstmt.setInt(2, medicineId);
+
+            boolean updated = pstmt.executeUpdate() > 0;
+
+            if (updated) {
+                Medicine updatedMed = getMedicineById(medicineId);
+                if (updatedMed != null) {
+                    evaluateTotalStockAlert(updatedMed.getMedicineName(), updatedMed.getMovingType());
+                }
+            }
+            return updated;
+        }
+    }
+
+
+    
+    //Set stock_quantity to 0 when removing expired items from shelves (Owner Only)
+    public boolean clearExpiredBatchStock(int medicineId) throws SQLException, UnauthorizedAccessException {
+        verifyOwnerAccess();
+
+        String sql = "UPDATE inventory SET stock_quantity = 0 WHERE medicine_id = ?";
+
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, medicineId);
+            return pstmt.executeUpdate() > 0;
+        }
+    }
+
+
+    
+    //Delete an erroneous medicine batch record from inventory (Owner Only)
+    public boolean deleteMedicineBatch(int medicineId) throws SQLException, UnauthorizedAccessException {
+        verifyOwnerAccess();
+
+        String sql = "DELETE FROM inventory WHERE medicine_id = ?";
+
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setInt(1, medicineId);
+            return pstmt.executeUpdate() > 0;
+
         } catch (SQLException e) {
-            System.err.println("Error Clearing Expired Batch Stock: " + e.getMessage());
+            //MSSQL Error Code 547 = Foreign Key Constraint Violation (batch already linked to past bills)
+            if (e.getErrorCode() == 547) {
+                throw new SQLException("Cannot delete this batch because it is already linked to past sales bills. Set stock to 0 instead.");
+            }
             throw e;
         }
     }
 
-    // 9. SYSTEM STARTUP ALERT SCAN
-    public void runSystemStartupAlertScan() {
-        // FIRST: Run Auto Moving Type Classification
-        updateMovingTypeAutomatically();
+    
 
-        List<Medicine> activeBatches = new ArrayList<>();
-        Set<String> evaluatedMedicines = new HashSet<>();
+    //System startup scan (update moving types, check batch expiries, and evaluate low stock)
+    public void checkAndGenerateStartupAlerts() throws SQLException {
+        //First update FAST/SLOW tags based on last 7 days of sales
+        autoUpdateMovingTypes();
 
-        String query = "SELECT * FROM inventory WHERE stock_quantity > 0";
+        String sql = "SELECT * FROM inventory WHERE stock_quantity > 0";
+        Set<String> checkedMedicinesForStock = new HashSet<>();
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query);
-             ResultSet rs = stmt.executeQuery()) {
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
 
             while (rs.next()) {
-                Medicine med = mapResultSetToMedicine(rs);
-                activeBatches.add(med);
-                evaluateBatchExpiry(med);
-            }
+                Medicine med = mapRowToMedicine(rs);
 
-            for (Medicine med : activeBatches) {
-                if (evaluatedMedicines.add(med.getMedicineName())) {
-                    evaluateTotalStock(med.getMedicineName());
+                //Evaluate expiry date for each individual batch
+                evaluateBatchExpiryAlert(med);
+
+                //Evaluate total active stock once per unique medicine name
+                String medNameKey = med.getMedicineName().trim().toLowerCase();
+                if (!checkedMedicinesForStock.contains(medNameKey)) {
+                    checkedMedicinesForStock.add(medNameKey);
+                    evaluateTotalStockAlert(med.getMedicineName(), med.getMovingType());
                 }
             }
-        } catch (SQLException e) {
-            System.err.println("Error During System Startup Alert Scan: " + e.getMessage());
         }
     }
 
-    // ** ALERT EVALUATION HELPERS (PUSH TO NotificationManager) ** //
     
-    // A. Batch Expiry Alert Logic
-    public void evaluateBatchExpiry(Medicine med) {
-        if (med == null || med.getExpDate() == null) {
-            return;
-        }
 
+    //Evaluate batch expiry date (expired or expiring within 7 months)(Helper)
+    public void evaluateBatchExpiryAlert(Medicine med) {
+        if (med == null || med.getExpDate() == null) return;
+
+        NotificationManager notifManager = NotificationManager.getInstance();
         LocalDate today = LocalDate.now();
-        LocalDate expiration = med.getExpDate().toLocalDate();
-        LocalDate thresholdDate = today.plusMonths(7);
+        LocalDate sevenMonthsLater = today.plusMonths(7);
+        LocalDate expLocal = med.getExpDate().toLocalDate();
 
-        if (expiration.isBefore(today) || expiration.isEqual(today)) {
-            NotificationManagaer.getInstance().addNotification(
-                "EXPIRED", 
-                med.getMedicineName(), 
-                "Batch " + med.getBatchNumber() + " has expired! Immediate removal from shelves required."
-            );
-        } else if (!expiration.isAfter(thresholdDate)) {
-            NotificationManagaer.getInstance().addNotification(
-                "EXPIRY_WARNING", 
-                med.getMedicineName(), 
-                "Batch " + med.getBatchNumber() + " expires on " + expiration + ". Suggested company re-export."
-            );
+        if (!expLocal.isAfter(sevenMonthsLater)) {
+            if (expLocal.isBefore(today) || expLocal.isEqual(today)) {
+                notifManager.addNotification(
+                    "EXPIRED",
+                    "EXPIRED Medicine: " + med.getMedicineName(),
+                    "Batch [" + med.getBatchNumber() + "] expired on " + expLocal + ". Remove from shelf immediately!"
+                );
+            } else {
+                notifManager.addNotification(
+                    "EXPIRY_WARNING",
+                    "Expiry Warning: " + med.getMedicineName(),
+                    "Batch [" + med.getBatchNumber() + "] expiring soon (" + expLocal + "). Consider company re-export."
+                );
+            }
         }
     }
 
-    // B. Total Active Stock Alert Logic (50% Restock Rule Fixed)
-    public void evaluateTotalStock(String medicineName) {
-        if (medicineName == null || medicineName.trim().isEmpty()) {
-            return;
-        }
+    
 
-        String query = "SELECT SUM(stock_quantity) AS total_stock, MAX(moving_type) AS moving_type "
-                   + "FROM inventory WHERE medicine_name = ? AND stock_quantity > 0 AND exp_date > GETDATE()";
+    //Evaluate total active stock against 50% capacity threshold (FAST = 5000/2500, SLOW= 200/100)(Helper)
+    public void evaluateTotalStockAlert(String medicineName, String movingType) throws SQLException {
+        if (medicineName == null || medicineName.trim().isEmpty()) return;
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
+        String sql = "SELECT ISNULL(SUM(stock_quantity), 0) AS total_active_stock " +
+                     "FROM inventory " +
+                     "WHERE medicine_name = ? AND stock_quantity > 0 AND exp_date > CAST(GETDATE() AS DATE)";
 
-            stmt.setString(1, medicineName.trim());
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-            try (ResultSet rs = stmt.executeQuery()) {
+            pstmt.setString(1, medicineName.trim());
+
+            try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
-                    int totalStock = rs.getInt("total_stock");
-                    String movingType = rs.getString("moving_type");
-                    if (movingType == null) {
-                        movingType = "SLOW";
-                    }
+                    int totalActiveStock = rs.getInt("total_active_stock");
+                    String type = (movingType != null) ? movingType.trim().toUpperCase() : "SLOW";
 
-                    int lowThreshold;
-                    int restockAmount;
+                    int standardStock = "FAST".equals(type) ? 5000 : 200;
+                    int halfStockThreshold = standardStock / 2;
 
-                    if ("FAST".equalsIgnoreCase(movingType)) {
-                        lowThreshold = 500; // Alert when active stock < 500 units
-                        restockAmount = 1000 - totalStock;
-                    } else {
-                        lowThreshold = 50;  // Alert when active stock < 50 units
-                        restockAmount = 100 - totalStock;
-                    }
-
-                    if (totalStock < lowThreshold) {
-                        NotificationManagaer.getInstance().addNotification(
-                            "LOW_STOCK", 
-                            medicineName, 
-                            "Total active stock is " + totalStock + " units (Threshold: " + lowThreshold + "). Suggested restock: " + restockAmount + " units."
+                    if (totalActiveStock < halfStockThreshold) {
+                        int suggestedRestock = standardStock - totalActiveStock;
+                        NotificationManager.getInstance().addNotification(
+                            "LOW_STOCK",
+                            "Low Stock (" + type + "): " + medicineName,
+                            "Active stock (" + totalActiveStock + " units) dropped below 50% (" + halfStockThreshold + " units). Suggested restock: " + suggestedRestock + " units."
                         );
                     }
                 }
             }
-        } catch (SQLException e) {
-            System.err.println("Error Evaluating Total Stock for " + medicineName + ": " + e.getMessage());
-        }
-    }
-
-    // Method to check if a cashier is trying to sell more items than are physically available
-    public void validateStockAvailability(int medicineId, int requestedQty) throws OutOfStockException {
-        Medicine med = getMedicineById(medicineId);
-        if (med == null) {
-            throw new IllegalArgumentException("Medicine record cannot be null.");
-        }
-    
-        if (requestedQty > med.getStockQuantity()) {
-            throw new OutOfStockException(
-                "Billing Blocked: Insufficient stock for " + med.getMedicineName() + " (Available: " + med.getStockQuantity() + ", Requested: " + requestedQty + ")."
-            );
         }
     }
 }
