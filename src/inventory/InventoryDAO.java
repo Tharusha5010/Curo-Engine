@@ -25,7 +25,7 @@ import java.util.Set;
 
 public class InventoryDAO {
 
-    //Get valid database connection and verify it is not null
+    //Check and return database connection
     private Connection getValidConnection() throws SQLException {
         Connection conn = DBConnection.getConnection();
         if (conn == null) {
@@ -34,7 +34,7 @@ public class InventoryDAO {
         return conn;
     }
 
-    //Verify that the currently logged-in user is an ACTIVE OWNER
+    //Check if logged-in user is an active owner
     private void verifyOwnerAccess() throws UnauthorizedAccessException {
         StaffMember currentUser = UserSession.getCurrentUser();
         if (currentUser == null || !"OWNER".equalsIgnoreCase(currentUser.getRole())
@@ -45,7 +45,7 @@ public class InventoryDAO {
 
     
 
-    //Map a ResultSet row to a Medicine object (Helper method)
+    //Convert database row to Medicine object
     private Medicine mapRowToMedicine(ResultSet rs) throws SQLException {
         return new Medicine(
             rs.getInt("medicine_id"),
@@ -63,7 +63,7 @@ public class InventoryDAO {
 
 
     
-    //Insert a new medicine batch into inventory table (Owner Only)
+    //Add new medicine batch (Owner only)
     public boolean addMedicineBatch(Medicine med) throws SQLException, UnauthorizedAccessException {
         verifyOwnerAccess();
 
@@ -77,7 +77,7 @@ public class InventoryDAO {
             throw new IllegalArgumentException("Batch number cannot be empty.");
         }
 
-        //Set safe defaults for optional fields
+        //Set default values for empty fields
         String companyName = (med.getCompanyName() != null && !med.getCompanyName().trim().isEmpty())
                              ? med.getCompanyName().trim() : "Unknown";
         String movingType = (med.getMovingType() != null && !med.getMovingType().trim().isEmpty())
@@ -105,7 +105,7 @@ public class InventoryDAO {
 
             boolean inserted = pstmt.executeUpdate() > 0;
 
-            //Immediately trigger batch expiry and total stock alerts if inserted
+            //Send expiry and stock alerts after adding
             if (inserted) {
                 med.setMovingType(movingType);
                 evaluateBatchExpiryAlert(med);
@@ -117,7 +117,7 @@ public class InventoryDAO {
 
     
 
-    //Auto-Suggest / Smart Search for Billing POS (returns unique active medicine names)
+    //Search available medicine names for billing suggestions
     public List<String> searchMedicineNamesAutoSuggest(String keyword) throws SQLException {
         List<String> suggestions = new ArrayList<>();
         if (keyword == null || keyword.trim().isEmpty()) {
@@ -144,7 +144,7 @@ public class InventoryDAO {
 
     
 
-    //Search inventory records by medicine name or batch number (for Inventory Table UI)
+    //Search inventory by medicine name or batch number
     public List<Medicine> searchInventoryByNameOrBatch(String keyword) throws SQLException {
         List<Medicine> results = new ArrayList<>();
         if (keyword == null || keyword.trim().isEmpty()) {
@@ -173,7 +173,7 @@ public class InventoryDAO {
 
     
 
-    //Retrieve valid batches for a medicine sorted by FEFO (earliest expiry date first)
+    //Get valid batches sorted by earliest expiry date (FEFO)
     public List<Medicine> getBatchesByMedicineNameFEFO(String medicineName) throws SQLException {
         List<Medicine> batches = new ArrayList<>();
         if (medicineName == null || medicineName.trim().isEmpty()) {
@@ -200,7 +200,7 @@ public class InventoryDAO {
 
     
 
-    //Retrieve all inventory batches (for Inventory Management Table)
+    //Get all inventory items
     public List<Medicine> getAllInventory() throws SQLException {
         List<Medicine> inventoryList = new ArrayList<>();
         String sql = "SELECT * FROM inventory ORDER BY medicine_name ASC, exp_date ASC";
@@ -218,7 +218,7 @@ public class InventoryDAO {
 
     
 
-    //Retrieve a single medicine batch by its ID
+    //Get one medicine batch by ID
     public Medicine getMedicineById(int medicineId) throws SQLException {
         String sql = "SELECT * FROM inventory WHERE medicine_id = ?";
 
@@ -238,7 +238,7 @@ public class InventoryDAO {
 
     
 
-    //Manually update moving classification (FAST or SLOW) by medicine name (Owner Only)
+    //Change moving type to FAST or SLOW by name (Owner only)
     public boolean updateMovingType(String medicineName, String movingType) throws SQLException, UnauthorizedAccessException {
         verifyOwnerAccess();
 
@@ -260,7 +260,7 @@ public class InventoryDAO {
 
             boolean updated = pstmt.executeUpdate() > 0;
 
-            //Re-evaluate low stock alert against the new moving type threshold
+            //Check low stock alert with new moving type
             if (updated) {
                 evaluateTotalStockAlert(medicineName.trim(), formattedType);
             }
@@ -270,7 +270,7 @@ public class InventoryDAO {
 
     
 
-    //Overload (Manually update moving classification using medicine_id) (Owner Only)
+    //Change moving type to FAST or SLOW by ID (Owner only)
     public boolean updateMovingType(int medicineId, String movingType) throws SQLException, UnauthorizedAccessException {
         Medicine med = getMedicineById(medicineId);
         if (med != null) {
@@ -281,7 +281,7 @@ public class InventoryDAO {
 
     
 
-    //Auto-classify medicines as FAST (> 300 units sold in last 7 days) or SLOW
+    //Set moving type to FAST if over 300 units sold in last 7 days
     public void autoUpdateMovingTypes() throws SQLException {
         String sql = "UPDATE inventory " +
                      "SET moving_type = CASE " +
@@ -305,7 +305,7 @@ public class InventoryDAO {
 
     
 
-    //Deduct stock quantity during billing/sales (prevents negative stock)
+    //Reduce stock quantity when selling medicine
     public boolean deductStock(int medicineId, int quantitySold) throws SQLException {
         if (quantitySold <= 0) {
             throw new IllegalArgumentException("Quantity sold must be greater than zero.");
@@ -323,7 +323,7 @@ public class InventoryDAO {
 
             boolean updated = pstmt.executeUpdate() > 0;
 
-            //Check if total active stock dropped below the 50% threshold
+            //Check if total stock dropped below 50%
             if (updated) {
                 Medicine updatedMed = getMedicineById(medicineId);
                 if (updatedMed != null) {
@@ -336,7 +336,7 @@ public class InventoryDAO {
 
     
 
-    //Update stock quantity directly for stock adjustments/corrections (Owner Only)
+    //Update stock quantity directly (Owner only)
     public boolean updateStockQuantity(int medicineId, int newQuantity) throws SQLException, UnauthorizedAccessException {
         verifyOwnerAccess();
 
@@ -366,7 +366,7 @@ public class InventoryDAO {
 
 
     
-    //Set stock_quantity to 0 when removing expired items from shelves (Owner Only)
+    //Set stock to 0 for expired batch (Owner only)
     public boolean clearExpiredBatchStock(int medicineId) throws SQLException, UnauthorizedAccessException {
         verifyOwnerAccess();
 
@@ -382,7 +382,7 @@ public class InventoryDAO {
 
 
     
-    //Delete an erroneous medicine batch record from inventory (Owner Only)
+    //Delete a batch from inventory (Owner only)
     public boolean deleteMedicineBatch(int medicineId) throws SQLException, UnauthorizedAccessException {
         verifyOwnerAccess();
 
@@ -395,7 +395,7 @@ public class InventoryDAO {
             return pstmt.executeUpdate() > 0;
 
         } catch (SQLException e) {
-            //MSSQL Error Code 547 = Foreign Key Constraint Violation (batch already linked to past bills)
+            //Handle error if batch is linked to past bills
             if (e.getErrorCode() == 547) {
                 throw new SQLException("Cannot delete this batch because it is already linked to past sales bills. Set stock to 0 instead.");
             }
@@ -405,9 +405,9 @@ public class InventoryDAO {
 
     
 
-    //System startup scan (update moving types, check batch expiries, and evaluate low stock)
+    //Run startup checks for moving types, expiry, and low stock
     public void checkAndGenerateStartupAlerts() throws SQLException {
-        //First update FAST/SLOW tags based on last 7 days of sales
+        //Update FAST/SLOW tags using last 7 days sales
         autoUpdateMovingTypes();
 
         String sql = "SELECT * FROM inventory WHERE stock_quantity > 0";
@@ -420,10 +420,10 @@ public class InventoryDAO {
             while (rs.next()) {
                 Medicine med = mapRowToMedicine(rs);
 
-                //Evaluate expiry date for each individual batch
+                //Check expiry date for each batch
                 evaluateBatchExpiryAlert(med);
 
-                //Evaluate total active stock once per unique medicine name
+                //Check total stock once per medicine name
                 String medNameKey = med.getMedicineName().trim().toLowerCase();
                 if (!checkedMedicinesForStock.contains(medNameKey)) {
                     checkedMedicinesForStock.add(medNameKey);
@@ -435,7 +435,7 @@ public class InventoryDAO {
 
     
 
-    //Evaluate batch expiry date (expired or expiring within 7 months)(Helper)
+    //Check if batch is expired or expiring within 7 months
     public void evaluateBatchExpiryAlert(Medicine med) {
         if (med == null || med.getExpDate() == null) return;
 
@@ -463,7 +463,7 @@ public class InventoryDAO {
 
     
 
-    //Evaluate total active stock against 50% capacity threshold (FAST = 5000/2500, SLOW= 200/100)(Helper)
+    //Check if total active stock is below 50% (FAST - 2500, SLOW  -100)
     public void evaluateTotalStockAlert(String medicineName, String movingType) throws SQLException {
         if (medicineName == null || medicineName.trim().isEmpty()) return;
 
