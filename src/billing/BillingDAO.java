@@ -1,5 +1,7 @@
 package billing;
 
+
+
 import alerts.NotificationManager;
 import auth.UserSession;
 import database.DBConnection;
@@ -18,31 +20,34 @@ import models.CanceledBill;
 import models.Medicine;
 import models.StaffMember;
 
+
+
 public class BillingDAO {
+    
 
-    /**
-     * =========================================================================
-     * 1. PROCESS BILL TRANSACTION (FEFO, SECURITY & TRANSACTION SAFETY)
-     * =========================================================================
-     * Purpose:
-     * - Validates the bill object and its items list to ensure they are not empty.
-     * - SECURITY CHECK 1: Verifies that Free Issue bills are authorized strictly by an active OWNER.
-     * - Merges duplicate items for the same medicine and validates quantities > 0.
-     * - Starts a database transaction (setAutoCommit(false)) for all-or-nothing data safety.
-     * - SECURITY CHECK 2: Verifies prescription requirements against user role or prescription checkbox.
-     * - Performs FEFO (First Expired, First Out) batch-wise stock deduction from inventory table.
-     * - Calculates total amounts, 5% discounts (attaching the selected discount reason), and net totals.
-     * - Inserts the main bill record and batch-inserts line items into the database.
-     * - Commits the transaction if successful, or rolls back entirely if any error occurs.
-     * - Triggers post-billing moving-type updates and low-stock alerts outside the transaction.
-     */
-    public int processBillTransaction(Bill bill) throws SQLException, UnauthorizedAccessException, OutOfStockException, ExpiredMedicineException {
-        // Validation: Check if bill and items list are present
-        if (bill == null || bill.getItems() == null || bill.getItems().isEmpty()) {
-            throw new IllegalArgumentException("Bill object and its items list cannot be null or empty.");
+    private final InventoryDAO inventoryDAO = new InventoryDAO();
+
+
+    
+    //Check and return database connection
+    private Connection getValidConnection() throws SQLException {
+        Connection conn = DBConnection.getConnection();
+        if (conn == null) {
+            throw new SQLException("Database connection is null!");
         }
+        return conn;
+    }
 
-        // SECURITY CHECK 1 (Free Issue): Ensure session user is an OWNER if Free Issue is active
+
+    
+    //Create a new bill and deduct stock using FEFO
+    public int createBill(Bill bill) throws UnauthorizedAccessException, OutOfStockException, ExpiredMedicineException, SQLException {
+        if (bill == null || bill.getItems() == null || bill.getItems().isEmpty()) {
+            throw new IllegalArgumentException("Bill must contain at least one item.");
+        }
+        
+
+        //Only active owners can create free issue bills
         if (bill.isFreeIssue()) {
             StaffMember currentUser = UserSession.getCurrentUser();
             if (currentUser == null || !"OWNER".equalsIgnoreCase(currentUser.getRole())) {
@@ -50,39 +55,36 @@ public class BillingDAO {
             }
         }
 
-        // MERGE DUPLICATE ITEMS: Combine quantities if the same medicine appears multiple times in the bill
+        
+        //Combine quantities if same medicine ID appears multiple times
         Map<Integer, Integer> mergedItemsMap = new HashMap<>();
         Map<Integer, String> medicineNamesMap = new HashMap<>();
         for (BillItem item : bill.getItems()) {
             if (item.getQuantity() <= 0) {
-                throw new IllegalArgumentException("Every item quantity must be greater than 0.");
+                throw new IllegalArgumentException("Quantity must be greater than 0 for all items.");
             }
             mergedItemsMap.put(item.getMedicineId(), mergedItemsMap.getOrDefault(item.getMedicineId(), 0) + item.getQuantity());
             medicineNamesMap.put(item.getMedicineId(), item.getMedicineName());
         }
+        
 
         Connection conn = null;
         int generatedBillId = -1;
+        List<BillItem> finalizedBatchItems = new ArrayList<>();
 
+        
         try {
-            conn = DBConnection.getConnection();
-            if (conn == null) {
-                throw new SQLException("Database connection failed: Connection is null.");
-            }
+            conn = getValidConnection();
+            conn.setAutoCommit(false); // Start database transaction
 
-            // START DATABASE TRANSACTION
-            conn.setAutoCommit(false);
+            double calculatedTotal = 0.0;
 
-            List<BillItem> finalizedBillItems = new ArrayList<>();
-            double totalAmount = 0.0;
-
-            // Loop through each unique requested medicine
             for (Map.Entry<Integer, Integer> entry : mergedItemsMap.entrySet()) {
                 int medicineId = entry.getKey();
-                int requestedQty = entry.getValue();
+                int remainingQtyNeeded = entry.getValue();
                 String medName = medicineNamesMap.get(medicineId);
 
-                // Fetch prescription requirement and medicine name from inventory
+                //Check medicine name and prescription requirement
                 boolean requiresRx = false;
                 String checkRxSql = "SELECT requires_prescription, medicine_name FROM inventory WHERE medicine_id = ?";
                 try (PreparedStatement rxStmt = conn.prepareStatement(checkRxSql)) {
@@ -95,7 +97,8 @@ public class BillingDAO {
                     }
                 }
 
-                // SECURITY CHECK 2 (Prescription): Verify if prescription is checked or user is Owner
+                
+                //Stop non-owners if prescription is required but not checked
                 if (requiresRx && !bill.isPrescriptionChecked()) {
                     StaffMember currentUser = UserSession.getCurrentUser();
                     boolean isOwner = currentUser != null && "OWNER".equalsIgnoreCase(currentUser.getRole());
@@ -105,7 +108,8 @@ public class BillingDAO {
                     }
                 }
 
-                // a) Fetch active, non-expired batches sorted by earliest expiry date first (FEFO)
+                
+                //Get active batches sorted by earliest expiry date
                 String batchSql = "SELECT medicine_id, unit_price, stock_quantity, exp_date FROM inventory " +
                                   "WHERE medicine_id = ? AND stock_quantity > 0 AND exp_date > GETDATE() " +
                                   "ORDER BY exp_date ASC";
@@ -113,6 +117,7 @@ public class BillingDAO {
                 List<BatchStock> activeBatches = new ArrayList<>();
                 int totalAvailableStock = 0;
 
+                
                 try (PreparedStatement batchStmt = conn.prepareStatement(batchSql)) {
                     batchStmt.setInt(1, medicineId);
                     try (ResultSet batchRs = batchStmt.executeQuery()) {
@@ -128,8 +133,9 @@ public class BillingDAO {
                         }
                     }
                 }
+                
 
-                // b) If no active batches exist, check if only expired stock remains
+                //Check if medicine is expired or out of stock
                 if (activeBatches.isEmpty()) {
                     String expiredCheckSql = "SELECT COUNT(*) FROM inventory WHERE medicine_id = ? AND stock_quantity > 0 AND exp_date <= GETDATE()";
                     try (PreparedStatement expStmt = conn.prepareStatement(expiredCheckSql)) {
@@ -137,94 +143,116 @@ public class BillingDAO {
                         try (ResultSet expRs = expStmt.executeQuery()) {
                             if (expRs.next() && expRs.getInt(1) > 0) {
                                 conn.rollback();
-                                throw new ExpiredMedicineException("ExpiredMedicineException: Only expired stock remains for medicine ID " + medicineId);
+                                throw new ExpiredMedicineException("Medicine '" + medName + "' is expired and cannot be billed!");
                             }
                         }
                     }
+                    
                     conn.rollback();
-                    throw new OutOfStockException("OutOfStockException: No stock available for medicine ID " + medicineId);
+                    throw new OutOfStockException("Medicine '" + medName + "' is currently out of stock!");
                 }
 
-                // d) Check if combined stock across active batches is enough to fulfill the requested quantity
-                if (totalAvailableStock < requestedQty) {
+                
+                //Check if total available stock is enough
+                if (totalAvailableStock < remainingQtyNeeded) {
                     conn.rollback();
-                    throw new OutOfStockException("OutOfStockException: Insufficient stock for " + medName + ". Requested: " + requestedQty + ", Available: " + totalAvailableStock);
+                    throw new OutOfStockException(
+                        "Insufficient stock for '" + medName + "'. Available: " + totalAvailableStock + ", Requested: " + remainingQtyNeeded
+                    );
                 }
 
-                // e) FEFO DEDUCTION LOOP & f) Deduct stock batch-by-batch and record finalized line items
-                int remainingQtyToDeduct = requestedQty;
+                
+                //Deduct stock starting from earliest expiring batch
                 for (BatchStock batch : activeBatches) {
-                    if (remainingQtyToDeduct <= 0) break;
+                    if (remainingQtyNeeded <= 0) break;
 
-                    int qtyTakenFromBatch = Math.min(batch.stockQuantity, remainingQtyToDeduct);
+                    int deductFromThisBatch = Math.min(batch.stockQuantity, remainingQtyNeeded);
                     double unitPrice = batch.unitPrice;
-                    double lineTotal = unitPrice * qtyTakenFromBatch;
+                    double lineTotal = bill.isFreeIssue() ? 0.0 : (unitPrice * deductFromThisBatch);
 
-                    totalAmount += lineTotal;
+                    calculatedTotal += lineTotal;
 
-                    // Update inventory stock inside the active transaction
-                    String updateStockSql = "UPDATE inventory SET stock_quantity = stock_quantity - ? WHERE medicine_id = ? AND unit_price = ? AND exp_date = ?";
+                    //Update batch stock in database
+                    String updateStockSql = "UPDATE inventory SET stock_quantity = stock_quantity - ? WHERE medicine_id = ?";
                     try (PreparedStatement updateStmt = conn.prepareStatement(updateStockSql)) {
-                        updateStmt.setInt(1, qtyTakenFromBatch);
+                        updateStmt.setInt(1, deductFromThisBatch);
                         updateStmt.setInt(2, batch.medicineId);
-                        updateStmt.setDouble(3, batch.unitPrice);
-                        updateStmt.setDate(4, batch.expDate);
                         updateStmt.executeUpdate();
                     }
+                    
 
-                    finalizedBillItems.add(new BillItem(batch.medicineId, medName, unitPrice, qtyTakenFromBatch));
-                    remainingQtyToDeduct -= qtyTakenFromBatch;
+                    BillItem batchLineItem = new BillItem(
+                        batch.medicineId,
+                        medName,
+                        unitPrice,
+                        deductFromThisBatch
+                    );
+                    batchLineItem.setLineTotal(lineTotal);
+                    finalizedBatchItems.add(batchLineItem);
+
+                    remainingQtyNeeded -= deductFromThisBatch;
                 }
             }
+            
 
-            // CALCULATE TOTALS & DISCOUNTS (Including Discount Reason Handling)
+            //Calculate 5% discount and final net total
             double discountAmount = 0.0;
-            double netTotal = totalAmount;
+            double netTotal = calculatedTotal;
 
+            
             if (bill.isFreeIssue()) {
-                discountAmount = totalAmount;
+                discountAmount = calculatedTotal;
                 netTotal = 0.0;
                 bill.setDiscountReason("Free Issue (Owner Authorized)");
             } else {
                 String reason = bill.getDiscountReason();
                 if (reason != null && !reason.trim().isEmpty() && !"None".equalsIgnoreCase(reason.trim())) {
-                    discountAmount = Math.round((totalAmount * 0.05) * 100.0) / 100.0; // 5% discount rounded to 2 decimals
-                    netTotal = Math.max(0.0, totalAmount - discountAmount);
+                    discountAmount = Math.round((calculatedTotal * 0.05) * 100.0) / 100.0;
+                    netTotal = Math.max(0.0, calculatedTotal - discountAmount);
                     bill.setDiscountReason(reason.trim());
                 } else {
                     bill.setDiscountReason("None");
                 }
             }
 
-            bill.setTotalAmount(totalAmount);
+            
+            bill.setTotalAmount(calculatedTotal);
             bill.setDiscountAmount(discountAmount);
             bill.setNetTotal(netTotal);
 
-            // SAVE TO DATABASE: Insert into 'bills' table and retrieve generated bill_id
+            
+            //Save bill record and get new bill ID
             String insertBillSql = "INSERT INTO bills (cashier_id, total_amount, discount_amount, net_total, is_prescription_checked, is_free_issue, create_at) " +
                                    "VALUES (?, ?, ?, ?, ?, ?, GETDATE())";
 
+            
             try (PreparedStatement billStmt = conn.prepareStatement(insertBillSql, Statement.RETURN_GENERATED_KEYS)) {
-                billStmt.setString(1, bill.getCashierId());
-                billStmt.setDouble(2, totalAmount);
+                String cashierId = (UserSession.getCurrentUser() != null) ? UserSession.getCurrentUser().getStaffId() : bill.getCashierId();
+                billStmt.setString(1, cashierId);
+                billStmt.setDouble(2, calculatedTotal);
                 billStmt.setDouble(3, discountAmount);
                 billStmt.setDouble(4, netTotal);
                 billStmt.setBoolean(5, bill.isPrescriptionChecked());
                 billStmt.setBoolean(6, bill.isFreeIssue());
+
                 billStmt.executeUpdate();
 
-                try (ResultSet rs = billStmt.getGeneratedKeys()) {
-                    if (rs.next()) {
-                        generatedBillId = rs.getInt(1);
+                
+                try (ResultSet keys = billStmt.getGeneratedKeys()) {
+                    if (keys.next()) {
+                        generatedBillId = keys.getInt(1);
                         bill.setBillId(generatedBillId);
+                    } else {
+                        throw new SQLException("Failed to retrieve generated Bill ID.");
                     }
                 }
             }
 
-            // Batch-insert all finalized batch line items into 'bill_item' table
+            
+            //Save all bill items to database
             String insertItemSql = "INSERT INTO bill_item (bill_id, medicine_id, sold_price, quantity, line_total) VALUES (?, ?, ?, ?, ?)";
             try (PreparedStatement itemStmt = conn.prepareStatement(insertItemSql)) {
-                for (BillItem item : finalizedBillItems) {
+                for (BillItem item : finalizedBatchItems) {
                     itemStmt.setInt(1, generatedBillId);
                     itemStmt.setInt(2, item.getMedicineId());
                     itemStmt.setDouble(3, item.getSoldPrice());
@@ -232,135 +260,135 @@ public class BillingDAO {
                     itemStmt.setDouble(5, item.getLineTotal());
                     itemStmt.addBatch();
                 }
+                
                 itemStmt.executeBatch();
             }
 
-            // COMMIT TRANSACTION
-            conn.commit();
-            bill.setItems(finalizedBillItems);
+            
+            conn.commit(); //Save all changes permanently
+            bill.setItems(finalizedBatchItems);
 
         } catch (Exception e) {
             if (conn != null) {
                 try {
-                    conn.rollback(); // Rollback transaction if any error occurs
-                } catch (SQLException ex) {
-                    System.err.println("Rollback failed: " + ex.getMessage());
+                    conn.rollback(); //Undo all changes on error
+                } catch (SQLException rollbackEx) {
+                    rollbackEx.printStackTrace();
                 }
             }
+            
             throw e;
         } finally {
             if (conn != null) {
                 try {
                     conn.setAutoCommit(true);
-                    conn.close(); // Close database connection
-                } catch (SQLException e) {
-                    System.err.println("Failed to close connection: " + e.getMessage());
+                    conn.close();
+                } catch (SQLException closeEx) {
+                    closeEx.printStackTrace();
                 }
             }
         }
 
-        // POST-BILLING VELOCITY & STOCK ALERTS (OUTSIDE TRANSACTION)
+        
+        //Update moving types and check low stock alerts after billing
         try {
-            InventoryDAO inventoryDAO = new InventoryDAO();
-            inventoryDAO.autoUpdateMovingTypes(); // Automatically re-classify moving types based on last 7 days of sales
-            for (BillItem item : bill.getItems()) {
+            inventoryDAO.autoUpdateMovingTypes(); //Update FAST/SLOW tags from 7-day sales
+            for (BillItem item : finalizedBatchItems) {
                 Medicine med = inventoryDAO.getMedicineById(item.getMedicineId());
                 if (med != null) {
-                    inventoryDAO.evaluateTotalStockAlert(med.getMedicineName(), med.getMovingType()); // Check 50% restock threshold
+                    inventoryDAO.evaluateTotalStockAlert(med.getMedicineName(), med.getMovingType()); //Check if stock dropped below 50%
                 }
             }
         } catch (Exception alertEx) {
-            System.err.println("Post-billing alert warning: " + alertEx.getMessage());
+            System.err.println("Warning: Failed to update moving types or evaluate low stock alert after billing: " + alertEx.getMessage());
         }
 
+    
         return generatedBillId;
     }
 
-    /**
-     * =========================================================================
-     * 2. CANCEL AN EXISTING BILL (OWNER ONLY + STOCK REVERSAL)
-     * =========================================================================
-     * Purpose:
-     * - Restricts bill cancellation exclusively to active Owners (Security Check).
-     * - Validates that the bill has not been canceled previously.
-     * - Fetches billed items and restores quantities back to their inventory batches.
-     * - Inserts a cancellation record into the 'canceled_bills' table.
-     * - Triggers a post-cancellation notification alert.
-     */
-    public boolean cancelPastBill(int billId, String reason) throws SQLException, UnauthorizedAccessException, IllegalStateException {
-        // SECURITY CHECK: Only an OWNER is allowed to cancel bills
+
+    
+    //Cancel a bill and restore stock (Owner only)
+    public boolean cancelBill(int billId, String reason) throws UnauthorizedAccessException, SQLException, IllegalStateException {
         if (!UserSession.isOwner()) {
-            throw new UnauthorizedAccessException("Unauthorized: Only an active Owner can cancel bills.");
+            throw new UnauthorizedAccessException("Only an Owner is authorized to cancel bills!");
         }
 
         if (isBillCanceled(billId)) {
-            throw new IllegalStateException("Bill ID " + billId + " is already canceled.");
+            throw new IllegalStateException("Bill #" + billId + " has already been canceled.");
         }
-
-        // Validate and trim cancellation reason
-        String trimmedReason = (reason == null || reason.trim().isEmpty()) ? "Canceled by Owner" : reason.trim();
-        if (trimmedReason.length() > 50) {
-            trimmedReason = trimmedReason.substring(0, 50);
-        }
-
-        StaffMember currentOwner = UserSession.getCurrentUser();
-        String ownerId = (currentOwner != null) ? currentOwner.getStaffId() : "ADMIN01";
 
         Connection conn = null;
-        try {
-            conn = DBConnection.getConnection();
-            if (conn == null) throw new SQLException("Database connection failed.");
+        StaffMember currentOwner = UserSession.getCurrentUser();
+        String ownerId = (currentOwner != null) ? currentOwner.getStaffId() : "OWNER";
+        String safeReason = (reason != null && !reason.trim().isEmpty()) ? reason.trim() : "Canceled by Owner";
+        if (safeReason.length() > 50) {
+            safeReason = safeReason.substring(0, 50);
+        }
 
+        
+        try {
+            conn = getValidConnection();
             conn.setAutoCommit(false);
 
-            // Fetch all medicine IDs and quantities for this bill from 'bill_item'
+            //Get all items from the bill
             String fetchItemsSql = "SELECT medicine_id, quantity FROM bill_item WHERE bill_id = ?";
-            List<BillItem> billItems = new ArrayList<>();
+            List<BillItem> itemsToRestore = new ArrayList<>();
 
-            try (PreparedStatement ps = conn.prepareStatement(fetchItemsSql)) {
-                ps.setInt(1, billId);
-                try (ResultSet rs = ps.executeQuery()) {
+            try (PreparedStatement fetchStmt = conn.prepareStatement(fetchItemsSql)) {
+                fetchStmt.setInt(1, billId);
+                try (ResultSet rs = fetchStmt.executeQuery()) {
                     while (rs.next()) {
                         BillItem item = new BillItem();
                         item.setMedicineId(rs.getInt("medicine_id"));
                         item.setQuantity(rs.getInt("quantity"));
-                        billItems.add(item);
+                        itemsToRestore.add(item);
                     }
                 }
             }
 
-            if (billItems.isEmpty()) {
+            
+            if (itemsToRestore.isEmpty()) {
                 conn.rollback();
-                throw new IllegalArgumentException("No items found for Bill ID " + billId);
+                throw new IllegalArgumentException("Bill #" + billId + " not found or has no items.");
             }
+            
 
-            // Restore stock quantities back to inventory table
+            //Add sold quantities back to inventory stock
             String restoreStockSql = "UPDATE inventory SET stock_quantity = stock_quantity + ? WHERE medicine_id = ?";
             try (PreparedStatement restoreStmt = conn.prepareStatement(restoreStockSql)) {
-                for (BillItem item : billItems) {
+                for (BillItem item : itemsToRestore) {
                     restoreStmt.setInt(1, item.getQuantity());
                     restoreStmt.setInt(2, item.getMedicineId());
                     restoreStmt.executeUpdate();
                 }
             }
 
-            // Insert record into 'canceled_bills' table
+            
+            //Save cancel record to canceled_bills table
             String insertCancelSql = "INSERT INTO canceled_bills (bill_id, canceled_by, canceled_at, reason) VALUES (?, ?, GETDATE(), ?)";
             try (PreparedStatement cancelStmt = conn.prepareStatement(insertCancelSql)) {
                 cancelStmt.setInt(1, billId);
                 cancelStmt.setString(2, ownerId);
-                cancelStmt.setString(3, trimmedReason);
+                cancelStmt.setString(3, safeReason);
                 cancelStmt.executeUpdate();
             }
 
             conn.commit();
+            
 
-            // POST-CANCEL NOTIFICATION
+            //Send bill canceled alert
             try {
-                NotificationManager.getInstance().addNotification("BILL_CANCELED","Bill #" + billId + " Canceled","Owner: " + ownerId + ", Reason: " + trimmedReason);
+                NotificationManager.getInstance().addNotification(
+                    "BILL_CANCELED",
+                    "Bill #" + billId + " Canceled",
+                    "Canceled by Owner (" + ownerId + "). Stock restored. Reason: " + safeReason
+                );
             } catch (Exception notifEx) {
-                System.err.println("Notification warning: " + notifEx.getMessage());
+                System.err.println("Warning: Failed to send cancel notification: " + notifEx.getMessage());
             }
+            
 
             return true;
         } catch (Exception e) {
@@ -374,25 +402,22 @@ public class BillingDAO {
         }
     }
 
-    /**
-     * =========================================================================
-     * 3. GET ALL CANCELED BILLS (OWNER ONLY)
-     * =========================================================================
-     * Purpose:
-     * - Verifies that the current user has active Owner privileges.
-     * - Retrieves all canceled bill history records ordered by cancellation date descending.
-     */
-    public List<CanceledBill> getAllCanceledBills() throws SQLException, UnauthorizedAccessException {
+    
+
+    //Get all canceled bills (Owner only)
+    public List<CanceledBill> getAllCanceledBills() throws UnauthorizedAccessException, SQLException {
         if (!UserSession.isOwner()) {
-            throw new UnauthorizedAccessException("Unauthorized: Only an active Owner can view canceled bills.");
+            throw new UnauthorizedAccessException("Only an Owner can view canceled bills.");
         }
 
         List<CanceledBill> canceledList = new ArrayList<>();
         String sql = "SELECT cancel_id, bill_id, canceled_by, canceled_at, reason FROM canceled_bills ORDER BY canceled_at DESC";
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
+        
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+
             while (rs.next()) {
                 canceledList.add(new CanceledBill(
                     rs.getInt("cancel_id"),
@@ -403,33 +428,29 @@ public class BillingDAO {
                 ));
             }
         }
+        
         return canceledList;
     }
 
-    /**
-     * =========================================================================
-     * 4. GET BILL DETAILS BY ID (FOR RECEIPTS / VIEWING)
-     * =========================================================================
-     * Purpose:
-     * - Fetches main bill metadata from the 'bills' table using the specified bill ID.
-     * - Joins 'bill_item' and 'inventory' tables to retrieve associated line items and medicine names.
-     * - Returns the populated Bill object or null if not found.
-     */
-    public Bill getBillDetailsById(int billId) throws SQLException {
-        String billSql = "SELECT bill_id, cashier_id, total_amount, discount_amount, net_total, is_prescription_checked, is_free_issue, create_at FROM bills WHERE bill_id = ?";
+
+    
+    //Get bill details and items by bill ID
+    public Bill getBillById(int billId) throws SQLException {
+        String billSql = "SELECT * FROM bills WHERE bill_id = ?";
         Bill bill = null;
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(billSql)) {
-            ps.setInt(1, billId);
-            try (ResultSet rs = ps.executeQuery()) {
+        try (Connection conn = getValidConnection();
+             PreparedStatement billStmt = conn.prepareStatement(billSql)) {
+
+            billStmt.setInt(1, billId);
+            try (ResultSet rs = billStmt.executeQuery()) {
                 if (rs.next()) {
                     bill = new Bill(
                         rs.getInt("bill_id"),
                         rs.getString("cashier_id"),
                         rs.getDouble("total_amount"),
                         rs.getDouble("discount_amount"),
-                        "", 
+                        "",
                         rs.getDouble("net_total"),
                         rs.getBoolean("is_prescription_checked"),
                         rs.getBoolean("is_free_issue"),
@@ -439,61 +460,59 @@ public class BillingDAO {
             }
         }
 
+        
         if (bill != null) {
             String itemsSql = "SELECT bi.item_id, bi.bill_id, bi.medicine_id, i.medicine_name, bi.sold_price, bi.quantity, bi.line_total " +
                               "FROM bill_item bi JOIN inventory i ON bi.medicine_id = i.medicine_id WHERE bi.bill_id = ?";
             List<BillItem> items = new ArrayList<>();
 
-            try (Connection conn = DBConnection.getConnection();
-                 PreparedStatement ps = conn.prepareStatement(itemsSql)) {
-                ps.setInt(1, billId);
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
+            try (Connection conn = getValidConnection();
+                 PreparedStatement itemStmt = conn.prepareStatement(itemsSql)) {
+                itemStmt.setInt(1, billId);
+                try (ResultSet itemRs = itemStmt.executeQuery()) {
+                    while (itemRs.next()) {
                         items.add(new BillItem(
-                            rs.getInt("item_id"),
-                            rs.getInt("bill_id"),
-                            rs.getInt("medicine_id"),
-                            rs.getString("medicine_name"),
-                            rs.getDouble("sold_price"),
-                            rs.getInt("quantity"),
-                            rs.getDouble("line_total")
+                            itemRs.getInt("item_id"),
+                            itemRs.getInt("bill_id"),
+                            itemRs.getInt("medicine_id"),
+                            itemRs.getString("medicine_name"),
+                            itemRs.getDouble("sold_price"),
+                            itemRs.getInt("quantity"),
+                            itemRs.getDouble("line_total")
                         ));
                     }
                 }
             }
+            
             bill.setItems(items);
         }
-
+        
         return bill;
     }
 
-    /**
-     * =========================================================================
-     * HELPER METHODS
-     * =========================================================================
-     */
-    // Checks if a bill ID is already recorded in the 'canceled_bills' table
+    
+
+    //Check if a bill is already canceled
     public boolean isBillCanceled(int billId) throws SQLException {
         String sql = "SELECT COUNT(*) FROM canceled_bills WHERE bill_id = ?";
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, billId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt(1) > 0;
-                }
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, billId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next() && rs.getInt(1) > 0;
             }
         }
-        return false;
     }
+    
 
-    // Private helper class for managing FEFO batch stock sorting and deduction
+    //Batch stock sorting (Helper)
     private static class BatchStock {
         int medicineId;
         double unitPrice;
         int stockQuantity;
         Date expDate;
 
+        
         public BatchStock(int medicineId, double unitPrice, int stockQuantity, Date expDate) {
             this.medicineId = medicineId;
             this.unitPrice = unitPrice;
