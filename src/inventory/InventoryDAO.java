@@ -36,7 +36,7 @@ public class InventoryDAO {
 
     //Verify that the currently logged-in user is an ACTIVE OWNER
     private void verifyOwnerAccess() throws UnauthorizedAccessException {
-        StaffMember currentUser = UserSession.getInstance().getCurrentUser();
+        StaffMember currentUser = UserSession.getCurrentUser();
         if (currentUser == null || !"OWNER".equalsIgnoreCase(currentUser.getRole())
                 || !"ACTIVE".equalsIgnoreCase(currentUser.getStatus())) {
             throw new UnauthorizedAccessException("Access Denied: Only an active Owner can perform this inventory action.");
