@@ -11,7 +11,7 @@ import exceptions.UnauthorizedAccessException;
 import inventory.InventoryDAO;
 import java.sql.*;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import models.Bill;
@@ -23,10 +23,9 @@ import models.StaffMember;
 
 
 public class BillingDAO {
+
     
-
     private final InventoryDAO inventoryDAO = new InventoryDAO();
-
 
     
     //Check and return database connection
@@ -45,7 +44,6 @@ public class BillingDAO {
         if (bill == null || bill.getItems() == null || bill.getItems().isEmpty()) {
             throw new IllegalArgumentException("Bill must contain at least one item.");
         }
-        
 
         //Only active owners can create free issue bills
         if (bill.isFreeIssue()) {
@@ -56,18 +54,6 @@ public class BillingDAO {
         }
 
         
-        //Combine quantities if same medicine ID appears multiple times
-        Map<Integer, Integer> mergedItemsMap = new HashMap<>();
-        Map<Integer, String> medicineNamesMap = new HashMap<>();
-        for (BillItem item : bill.getItems()) {
-            if (item.getQuantity() <= 0) {
-                throw new IllegalArgumentException("Quantity must be greater than 0 for all items.");
-            }
-            mergedItemsMap.put(item.getMedicineId(), mergedItemsMap.getOrDefault(item.getMedicineId(), 0) + item.getQuantity());
-            medicineNamesMap.put(item.getMedicineId(), item.getMedicineName());
-        }
-        
-
         Connection conn = null;
         int generatedBillId = -1;
         List<BillItem> finalizedBatchItems = new ArrayList<>();
@@ -77,27 +63,60 @@ public class BillingDAO {
             conn = getValidConnection();
             conn.setAutoCommit(false); // Start database transaction
 
-            double calculatedTotal = 0.0;
+            //Combine quantities if same medicine name appears multiple times (for Multi-Batch FEFO)
+            Map<String, Integer> mergedByMedName = new LinkedHashMap<>();
+            Map<String, Boolean> rxRequiredByMedName = new LinkedHashMap<>();
 
-            for (Map.Entry<Integer, Integer> entry : mergedItemsMap.entrySet()) {
-                int medicineId = entry.getKey();
-                int remainingQtyNeeded = entry.getValue();
-                String medName = medicineNamesMap.get(medicineId);
+            for (BillItem item : bill.getItems()) {
+                if (item.getQuantity() <= 0) {
+                    throw new IllegalArgumentException("Quantity must be greater than 0 for all items.");
+                }
+
+                String medName = item.getMedicineName();
+                boolean requiresRx = false;
 
                 //Check medicine name and prescription requirement
-                boolean requiresRx = false;
-                String checkRxSql = "SELECT requires_prescription, medicine_name FROM inventory WHERE medicine_id = ?";
-                try (PreparedStatement rxStmt = conn.prepareStatement(checkRxSql)) {
-                    rxStmt.setInt(1, medicineId);
-                    try (ResultSet rxRs = rxStmt.executeQuery()) {
-                        if (rxRs.next()) {
-                            requiresRx = rxRs.getBoolean("requires_prescription");
-                            medName = rxRs.getString("medicine_name");
+                if (item.getMedicineId() > 0) {
+                    String checkRxSql = "SELECT requires_prescription, medicine_name FROM inventory WHERE medicine_id = ?";
+                    try (PreparedStatement rxStmt = conn.prepareStatement(checkRxSql)) {
+                        rxStmt.setInt(1, item.getMedicineId());
+                        try (ResultSet rxRs = rxStmt.executeQuery()) {
+                            if (rxRs.next()) {
+                                requiresRx = rxRs.getBoolean("requires_prescription");
+                                medName = rxRs.getString("medicine_name");
+                            }
+                        }
+                    }
+                } else if (medName != null && !medName.trim().isEmpty()) {
+                    String checkRxByNameSql = "SELECT TOP 1 requires_prescription, medicine_name FROM inventory WHERE medicine_name = ?";
+                    try (PreparedStatement rxStmt = conn.prepareStatement(checkRxByNameSql)) {
+                        rxStmt.setString(1, medName.trim());
+                        try (ResultSet rxRs = rxStmt.executeQuery()) {
+                            if (rxRs.next()) {
+                                requiresRx = rxRs.getBoolean("requires_prescription");
+                                medName = rxRs.getString("medicine_name");
+                            }
                         }
                     }
                 }
 
-                
+                if (medName == null || medName.trim().isEmpty()) {
+                    conn.rollback();
+                    throw new IllegalArgumentException("Invalid medicine specified in bill items.");
+                }
+
+                String key = medName.trim();
+                mergedByMedName.put(key, mergedByMedName.getOrDefault(key, 0) + item.getQuantity());
+                rxRequiredByMedName.put(key, rxRequiredByMedName.getOrDefault(key, false) || requiresRx);
+            }
+
+            double calculatedTotal = 0.0;
+
+            for (Map.Entry<String, Integer> entry : mergedByMedName.entrySet()) {
+                String medName = entry.getKey();
+                int remainingQtyNeeded = entry.getValue();
+                boolean requiresRx = rxRequiredByMedName.getOrDefault(medName, false);
+
                 //Stop non-owners if prescription is required but not checked
                 if (requiresRx && !bill.isPrescriptionChecked()) {
                     StaffMember currentUser = UserSession.getCurrentUser();
@@ -108,18 +127,16 @@ public class BillingDAO {
                     }
                 }
 
-                
-                //Get active batches sorted by earliest expiry date
+                //Get active batches for this medicine sorted by earliest expiry date (FEFO)
                 String batchSql = "SELECT medicine_id, unit_price, stock_quantity, exp_date FROM inventory " +
-                                  "WHERE medicine_id = ? AND stock_quantity > 0 AND exp_date > GETDATE() " +
-                                  "ORDER BY exp_date ASC";
+                                  "WHERE medicine_name = ? AND stock_quantity > 0 AND exp_date > GETDATE() " +
+                                  "ORDER BY exp_date ASC, medicine_id ASC";
 
                 List<BatchStock> activeBatches = new ArrayList<>();
                 int totalAvailableStock = 0;
 
-                
                 try (PreparedStatement batchStmt = conn.prepareStatement(batchSql)) {
-                    batchStmt.setInt(1, medicineId);
+                    batchStmt.setString(1, medName);
                     try (ResultSet batchRs = batchStmt.executeQuery()) {
                         while (batchRs.next()) {
                             int stock = batchRs.getInt("stock_quantity");
@@ -133,13 +150,12 @@ public class BillingDAO {
                         }
                     }
                 }
-                
 
                 //Check if medicine is expired or out of stock
                 if (activeBatches.isEmpty()) {
-                    String expiredCheckSql = "SELECT COUNT(*) FROM inventory WHERE medicine_id = ? AND stock_quantity > 0 AND exp_date <= GETDATE()";
+                    String expiredCheckSql = "SELECT COUNT(*) FROM inventory WHERE medicine_name = ? AND stock_quantity > 0 AND exp_date <= GETDATE()";
                     try (PreparedStatement expStmt = conn.prepareStatement(expiredCheckSql)) {
-                        expStmt.setInt(1, medicineId);
+                        expStmt.setString(1, medName);
                         try (ResultSet expRs = expStmt.executeQuery()) {
                             if (expRs.next() && expRs.getInt(1) > 0) {
                                 conn.rollback();
@@ -147,13 +163,12 @@ public class BillingDAO {
                             }
                         }
                     }
-                    
+
                     conn.rollback();
                     throw new OutOfStockException("Medicine '" + medName + "' is currently out of stock!");
                 }
 
-                
-                //Check if total available stock is enough
+                //Check if total available stock across all batches is enough
                 if (totalAvailableStock < remainingQtyNeeded) {
                     conn.rollback();
                     throw new OutOfStockException(
@@ -161,7 +176,6 @@ public class BillingDAO {
                     );
                 }
 
-                
                 //Deduct stock starting from earliest expiring batch
                 for (BatchStock batch : activeBatches) {
                     if (remainingQtyNeeded <= 0) break;
@@ -179,7 +193,6 @@ public class BillingDAO {
                         updateStmt.setInt(2, batch.medicineId);
                         updateStmt.executeUpdate();
                     }
-                    
 
                     BillItem batchLineItem = new BillItem(
                         batch.medicineId,
@@ -193,13 +206,12 @@ public class BillingDAO {
                     remainingQtyNeeded -= deductFromThisBatch;
                 }
             }
-            
 
+            
             //Calculate 5% discount and final net total
             double discountAmount = 0.0;
             double netTotal = calculatedTotal;
 
-            
             if (bill.isFreeIssue()) {
                 discountAmount = calculatedTotal;
                 netTotal = 0.0;
@@ -220,12 +232,10 @@ public class BillingDAO {
             bill.setDiscountAmount(discountAmount);
             bill.setNetTotal(netTotal);
 
-            
             //Save bill record and get new bill ID
             String insertBillSql = "INSERT INTO bills (cashier_id, total_amount, discount_amount, net_total, is_prescription_checked, is_free_issue, create_at) " +
                                    "VALUES (?, ?, ?, ?, ?, ?, GETDATE())";
 
-            
             try (PreparedStatement billStmt = conn.prepareStatement(insertBillSql, Statement.RETURN_GENERATED_KEYS)) {
                 String cashierId = (UserSession.getCurrentUser() != null) ? UserSession.getCurrentUser().getStaffId() : bill.getCashierId();
                 billStmt.setString(1, cashierId);
@@ -237,7 +247,6 @@ public class BillingDAO {
 
                 billStmt.executeUpdate();
 
-                
                 try (ResultSet keys = billStmt.getGeneratedKeys()) {
                     if (keys.next()) {
                         generatedBillId = keys.getInt(1);
@@ -248,7 +257,6 @@ public class BillingDAO {
                 }
             }
 
-            
             //Save all bill items to database
             String insertItemSql = "INSERT INTO bill_item (bill_id, medicine_id, sold_price, quantity, line_total) VALUES (?, ?, ?, ?, ?)";
             try (PreparedStatement itemStmt = conn.prepareStatement(insertItemSql)) {
@@ -260,11 +268,10 @@ public class BillingDAO {
                     itemStmt.setDouble(5, item.getLineTotal());
                     itemStmt.addBatch();
                 }
-                
+
                 itemStmt.executeBatch();
             }
 
-            
             conn.commit(); //Save all changes permanently
             bill.setItems(finalizedBatchItems);
 
@@ -276,7 +283,7 @@ public class BillingDAO {
                     rollbackEx.printStackTrace();
                 }
             }
-            
+
             throw e;
         } finally {
             if (conn != null) {
@@ -303,7 +310,6 @@ public class BillingDAO {
             System.err.println("Warning: Failed to update moving types or evaluate low stock alert after billing: " + alertEx.getMessage());
         }
 
-    
         return generatedBillId;
     }
 
@@ -327,7 +333,6 @@ public class BillingDAO {
             safeReason = safeReason.substring(0, 50);
         }
 
-        
         try {
             conn = getValidConnection();
             conn.setAutoCommit(false);
@@ -348,12 +353,10 @@ public class BillingDAO {
                 }
             }
 
-            
             if (itemsToRestore.isEmpty()) {
                 conn.rollback();
                 throw new IllegalArgumentException("Bill #" + billId + " not found or has no items.");
             }
-            
 
             //Add sold quantities back to inventory stock
             String restoreStockSql = "UPDATE inventory SET stock_quantity = stock_quantity + ? WHERE medicine_id = ?";
@@ -364,8 +367,8 @@ public class BillingDAO {
                     restoreStmt.executeUpdate();
                 }
             }
-
             
+
             //Save cancel record to canceled_bills table
             String insertCancelSql = "INSERT INTO canceled_bills (bill_id, canceled_by, canceled_at, reason) VALUES (?, ?, GETDATE(), ?)";
             try (PreparedStatement cancelStmt = conn.prepareStatement(insertCancelSql)) {
@@ -376,7 +379,6 @@ public class BillingDAO {
             }
 
             conn.commit();
-            
 
             //Send bill canceled alert
             try {
@@ -388,7 +390,6 @@ public class BillingDAO {
             } catch (Exception notifEx) {
                 System.err.println("Warning: Failed to send cancel notification: " + notifEx.getMessage());
             }
-            
 
             return true;
         } catch (Exception e) {
@@ -402,8 +403,8 @@ public class BillingDAO {
         }
     }
 
-    
 
+    
     //Get all canceled bills (Owner only)
     public List<CanceledBill> getAllCanceledBills() throws UnauthorizedAccessException, SQLException {
         if (!UserSession.isOwner()) {
@@ -413,7 +414,6 @@ public class BillingDAO {
         List<CanceledBill> canceledList = new ArrayList<>();
         String sql = "SELECT cancel_id, bill_id, canceled_by, canceled_at, reason FROM canceled_bills ORDER BY canceled_at DESC";
 
-        
         try (Connection conn = getValidConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql);
              ResultSet rs = pstmt.executeQuery()) {
@@ -428,12 +428,12 @@ public class BillingDAO {
                 ));
             }
         }
-        
+
         return canceledList;
     }
 
-
     
+
     //Get bill details and items by bill ID
     public Bill getBillById(int billId) throws SQLException {
         String billSql = "SELECT * FROM bills WHERE bill_id = ?";
@@ -459,8 +459,8 @@ public class BillingDAO {
                 }
             }
         }
-
         
+
         if (bill != null) {
             String itemsSql = "SELECT bi.item_id, bi.bill_id, bi.medicine_id, i.medicine_name, bi.sold_price, bi.quantity, bi.line_total " +
                               "FROM bill_item bi JOIN inventory i ON bi.medicine_id = i.medicine_id WHERE bi.bill_id = ?";
@@ -483,15 +483,15 @@ public class BillingDAO {
                     }
                 }
             }
-            
+
             bill.setItems(items);
         }
-        
+
         return bill;
     }
 
-    
 
+    
     //Check if a bill is already canceled
     public boolean isBillCanceled(int billId) throws SQLException {
         String sql = "SELECT COUNT(*) FROM canceled_bills WHERE bill_id = ?";
@@ -503,14 +503,15 @@ public class BillingDAO {
             }
         }
     }
-    
 
+
+    
     //Batch stock sorting (Helper)
     private static class BatchStock {
         int medicineId;
         double unitPrice;
         int stockQuantity;
-        
+
         public BatchStock(int medicineId, double unitPrice, int stockQuantity, Date expDate) {
             this.medicineId = medicineId;
             this.unitPrice = unitPrice;
