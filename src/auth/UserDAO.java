@@ -13,7 +13,7 @@ import models.StaffMember;
 
 public class UserDAO {
 
-    // Helper: Check if user is owner by ID (used for InventoryDAO integration)
+    //Check if staff ID belongs to an owner
     public boolean isOwner(String staffId) {
         String query = "SELECT role_ FROM staff WHERE staff_id = ?";
         try (Connection conn = DBConnection.getConnection();
@@ -30,7 +30,7 @@ public class UserDAO {
         return false;
     }
 
-    // Helper: Retrieve staff name by ID
+    //Get staff name by ID
     public String getStaffName(String staffId) {
         String query = "SELECT staff_name FROM staff WHERE staff_id = ?";
         try (Connection conn = DBConnection.getConnection();
@@ -47,7 +47,7 @@ public class UserDAO {
         return staffId;
     }
 
-    // Helper: Verify active owner for InventoryDAO calls
+    //Check if staff ID is an active owner
     public void verifyActiveOwner(String staffId) throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
         if (staffId == null || staffId.trim().isEmpty()) {
             throw new InvalidStaffIdException("Staff ID cannot be empty.");
@@ -60,7 +60,7 @@ public class UserDAO {
 
 
 
-    // 1. USER LOGIN
+    //Log in user and save session
     public StaffMember loginUser(String staffId, String password)
             throws SQLException, InvalidStaffIdException {
         if (staffId == null || staffId.trim().isEmpty() || password == null || password.isEmpty()) {
@@ -76,13 +76,13 @@ public class UserDAO {
             throw new InvalidStaffIdException("Staff ID " + staffId + " is inactive.");
         }
 
-        // Create sanitized StaffMember without password for session & return
+        //Remove password before saving user in session
         StaffMember sessionUser = new StaffMember(
             member.getStaffId(),
             member.getStaffName(),
             member.getRole(),
             member.getContactNumber(),
-            "", // Password excluded for session security
+            "", //Password excluded for session security
             member.getStatus()
         );
 
@@ -92,7 +92,7 @@ public class UserDAO {
 
 
 
-    // 2. REGISTER NEW STAFF (OWNER ONLY)
+    //Add new staff member (Owner only)
     public boolean registerStaff(StaffMember staff) throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
         if (!UserSession.isOwner()) {
             throw new UnauthorizedAccessException("Unauthorized: Only an active Owner can register new staff.");
@@ -107,7 +107,7 @@ public class UserDAO {
             throw new IllegalArgumentException("Password must be 1 to 50 characters.");
         }
 
-        // Default role to 'CASHIER' if left empty, and validate
+        //Set default role to CASHIER and check valid values
         String role = staff.getRole();
         if (role == null || role.trim().isEmpty()) {
             role = "CASHIER";
@@ -120,7 +120,7 @@ public class UserDAO {
 
 
 
-        // Default status to 'ACTIVE' if left empty, and validate
+        //Set default status to ACTIVE and check valid values
         String status = staff.getStatus();
         if (status == null || status.trim().isEmpty()) {
             status = "ACTIVE";
@@ -159,7 +159,7 @@ public class UserDAO {
 
 
 
-    // 3. UPDATE STAFF ACCOUNT STATUS (OWNER ONLY)
+    //Change staff account status to ACTIVE or INACTIVE (Owner only)
     public boolean updateStaffStatus(String staffId, String newStatus) throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
         if (!UserSession.isOwner()) {
             throw new UnauthorizedAccessException("Unauthorized: Only an active Owner can update staff status.");
@@ -170,7 +170,7 @@ public class UserDAO {
 
         String normalizedStatus = newStatus.toUpperCase();
         
-        // Safeguard: Prevent currently logged-in Owner from deactivating their own account
+        //Stop owner from deactivating their own account
         StaffMember currentUser = UserSession.getCurrentUser();
         if (currentUser != null && currentUser.getStaffId().equals(staffId) && "INACTIVE".equals(normalizedStatus)) {
             throw new UnauthorizedAccessException("Safeguard Violation: Owners cannot deactivate their own active account.");
@@ -185,7 +185,7 @@ public class UserDAO {
         }
     }
 
-    // 4. GET ALL STAFF MEMBERS (OWNER ONLY)
+    //Get all staff records (Owner only)
     public List<StaffMember> getAllStaff() throws SQLException, UnauthorizedAccessException {
         if (!UserSession.isOwner()) {
             throw new UnauthorizedAccessException("Unauthorized: Only an active Owner can view all staff records.");
@@ -198,7 +198,7 @@ public class UserDAO {
              PreparedStatement ps = con.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                // Exclude passwords by passing ""
+                //Hide password by passing empty string
                 list.add(new StaffMember(
                     rs.getString("staff_id"),
                     rs.getString("staff_name"),
@@ -212,7 +212,7 @@ public class UserDAO {
         return list;
     }
 
-    // 5. CHANGE PASSWORD
+    //Update staff password
     public boolean changePassword(String staffId, String oldPassword, String newPassword) 
             throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
         if (staffId == null || staffId.trim().isEmpty() || oldPassword == null || newPassword == null) {
@@ -246,7 +246,7 @@ public class UserDAO {
     }
 
 
-    // 6. ONE-TIME OWNER OVERRIDE VERIFICATION
+    //Verify owner login for one-time action approval
     public StaffMember verifyOwnerOverride(String staffId, String password) throws SQLException, InvalidStaffIdException {
         if (staffId == null || staffId.trim().isEmpty() || password == null || password.trim().isEmpty()) {
             return null;
@@ -257,7 +257,7 @@ public class UserDAO {
             && "ACTIVE".equalsIgnoreCase(member.getStatus()) 
             && member.getPassword().equals(password)) {
             
-            // Return verified Owner object without altering current UserSession
+            //Return owner details without changing current login session
             return new StaffMember(
                 member.getStaffId(),
                 member.getStaffName(),
@@ -273,7 +273,7 @@ public class UserDAO {
 
 
 
-    // Helper: Generate next ID (O001, C001...)
+    //Create next staff ID (O001, C001...)
     public String generateNextId(String role) throws SQLException {
         String prefix = "OWNER".equalsIgnoreCase(role) ? "O" : "C";
         String sql = "SELECT MAX(staff_id) FROM staff WHERE staff_id LIKE ?";
@@ -291,7 +291,7 @@ public class UserDAO {
         }
     }
 
-    // Helper: Find by ID with password masked for public calls
+    //Find staff member by ID without password
     public StaffMember findById(String staffId) throws SQLException {
         StaffMember member = findByIdWithPassword(staffId);
         if (member != null) {
@@ -309,7 +309,7 @@ public class UserDAO {
 
     
 
-    // Internal Helper: Find by ID including password for authentication checks
+    //Find staff member by ID including password for login check
     private StaffMember findByIdWithPassword(String staffId) throws SQLException {
         String sql = "SELECT staff_id, staff_name, role_, contact_number, password_, status_ "
                    + "FROM staff WHERE staff_id = ?";
@@ -330,6 +330,7 @@ public class UserDAO {
                 }
             }
         }
+        
         return null;
     }
 }
