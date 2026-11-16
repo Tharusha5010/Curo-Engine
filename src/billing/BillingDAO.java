@@ -510,14 +510,11 @@ public class BillingDAO {
         int medicineId;
         double unitPrice;
         int stockQuantity;
-        Date expDate;
-
         
         public BatchStock(int medicineId, double unitPrice, int stockQuantity, Date expDate) {
             this.medicineId = medicineId;
             this.unitPrice = unitPrice;
             this.stockQuantity = stockQuantity;
-            this.expDate = expDate;
         }
     }
 }
