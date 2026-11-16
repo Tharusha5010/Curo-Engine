@@ -1,27 +1,36 @@
 package alerts;
 
+
+
 import models.Notification;
 import javax.swing.SwingUtilities;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+
+
 public class NotificationManager {
 
-    // 1. SINGLE SHARED INSTANCE (Thread-safe Singleton)
+    
+    //Single shared instance
     private static volatile NotificationManager instance;
 
-    // 2. SAFE DATA STORAGE (Thread-safe lists in RAM)
+    
+    //Thread-safe lists for alerts and UI screens
     private final List<Notification> notifications;
     private final List<Runnable> listeners;
 
-    // Private constructor to prevent external instantiation
+    
+    //Private constructor
     private NotificationManager() {
         this.notifications = new CopyOnWriteArrayList<>();
         this.listeners = new CopyOnWriteArrayList<>();
     }
 
-    // Double-checked locking for thread-safe global access
+
+    
+    //Get the single instance safely
     public static NotificationManager getInstance() {
         if (instance == null) {
             synchronized (NotificationManager.class) {
@@ -30,25 +39,33 @@ public class NotificationManager {
                 }
             }
         }
+        
         return instance;
     }
 
-    // 3. UI SUBSCRIPTION SYSTEM
+
+    
+    //Add a UI screen to get live updates
     public void subscribe(Runnable listener) {
         if (listener != null && !listeners.contains(listener)) {
             listeners.add(listener);
         }
     }
 
+
+    
+    //Remove UI screen when closed
     public void unsubscribe(Runnable listener) {
         if (listener != null) {
             listeners.remove(listener);
         }
     }
 
-    // 4. ADDING & BROADCASTING ALERTS (Renamed to addNotification as requested)
+
+    
+    //Add a new alert and update all screens
     public void addNotification(String type, String title, String message) {
-        // Prevent duplicate alerts with the same type & title; update existing one instead
+        // Remove old alert if same type and title already exist
         for (int i = 0; i < notifications.size(); i++) {
             Notification existing = notifications.get(i);
             if (existing.getType() != null && existing.getTitle() != null &&
@@ -59,28 +76,38 @@ public class NotificationManager {
             }
         }
 
+        //Add newest alert to the top
         Notification newNotification = new Notification(type, title, message);
-        notifications.add(0, newNotification); // Add newest/updated alert at the top
+        notifications.add(0, newNotification);
         notifySubscribers();
     }
 
-    // Helper method to safely update all subscribed UI screens on the Swing EDT
+    
+
+    //Update UI safely on Swing thread
     private void notifySubscribers() {
         for (Runnable listener : listeners) {
             SwingUtilities.invokeLater(listener);
         }
     }
 
-    // 5. READING & CLEARING ALERTS
+
+    
+    //Return a safe copy of all alerts
     public List<Notification> getAllAlerts() {
-        // Return a safe copy so external code cannot accidentally modify the original list
         return new ArrayList<>(notifications);
     }
 
+
+    
+    //Get total alert count
     public int getAlertCount() {
         return notifications.size();
     }
 
+    
+
+    //Remove one alert by index
     public void removeAlert(int index) {
         if (index >= 0 && index < notifications.size()) {
             notifications.remove(index);
@@ -88,18 +115,26 @@ public class NotificationManager {
         }
     }
 
+
+    
+    //Remove one specific alert
     public void removeAlert(Notification target) {
         if (target != null && notifications.remove(target)) {
             notifySubscribers();
         }
     }
 
+
+    
+    //Remove all alerts
     public void clearAllAlerts() {
         notifications.clear();
         notifySubscribers();
     }
 
-    // 6. MODULE INTEGRATION SHORTCUT HELPERS (For Auth, Inventory & Billing)
+
+    
+    //Low or out of stock alerts  (Helper)
     public void notifyLowStock(String medicineName, int remainingQty) {
         if (remainingQty <= 0) {
             addNotification("OUT OF STOCK", medicineName, "Completely out of stock! Immediate restock required.");
@@ -108,18 +143,25 @@ public class NotificationManager {
         }
     }
 
+
+    
+    //Expired or expiring alerts (Helper)
     public void notifyExpiringSoon(String medicineName, String expDate, boolean isAlreadyExpired) {
         if (isAlreadyExpired) {
             addNotification("EXPIRED", medicineName, "Medicine expired on " + expDate + ". Do not issue!");
         } else {
-            addNotification("EXPIRING SOON", medicineName, "Expiring soon on " + expDate + ".");
+            addNotification("EXPIRING SOON", medicineName, "Expiring within 7 months (Exp: " + expDate + ").");
         }
     }
 
+
+    
+    //Canceled bill alerts (Helper)
     public void notifyBillCanceled(int billId, String reason) {
         addNotification("WARNING", "Bill #" + billId + " Canceled", "Reason: " + reason);
     }
 
+    // Helper for unauthorized access alerts
     public void notifyUnauthorizedAccess(String staffId, String actionName) {
         addNotification("SECURITY", "Unauthorized Access", "Staff [" + staffId + "] attempted: " + actionName);
     }
