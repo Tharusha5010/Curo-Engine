@@ -164,18 +164,20 @@ public class UserDAO {
         String sql = "INSERT INTO staff (staff_id, staff_name, role_, contact_number, password_, status_) "
                    + "VALUES (?, ?, ?, ?, ?, ?)";
 
-        try (Connection con = DBConnection.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
+        Connection con = DBConnection.getConnection();
             if (con == null) {
                 throw new SQLException("Database connection is null!");
             }
-            ps.setString(1, newId);
-            ps.setString(2, staff.getStaffName().trim());
-            ps.setString(3, role);
-            ps.setString(4, staff.getContactNumber().trim());
-            ps.setString(5, staff.getPassword());
-            ps.setString(6, status);
-            return ps.executeUpdate() > 0;
+
+            try ( PreparedStatement ps = con.prepareStatement(sql)) {
+
+                ps.setString(1, newId);
+                ps.setString(2, staff.getStaffName().trim());
+                ps.setString(3, role);
+                ps.setString(4, staff.getContactNumber().trim());
+                ps.setString(5, staff.getPassword());
+                ps.setString(6, status);
+                return ps.executeUpdate() > 0;
         }
     }
 
@@ -204,16 +206,18 @@ public class UserDAO {
         }
 
         String sql = "UPDATE staff SET status_ = ? WHERE staff_id = ?";
-        try (Connection con = DBConnection.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
+        Connection con = DBConnection.getConnection();
             if (con == null) {
                 throw new SQLException("Database connection is null!");
             }
-            ps.setString(1, normalizedStatus);
-            ps.setString(2, trimmedId);
-            return ps.executeUpdate() > 0;
+
+            try (PreparedStatement ps = con.prepareStatement(sql)) {
+                ps.setString(1, normalizedStatus);
+                ps.setString(2, trimmedId);
+                return ps.executeUpdate() > 0;
+            }
         }
-    }
+    
 
     //Get all staff records (Owner only)
     public List<StaffMember> getAllStaff() throws SQLException, UnauthorizedAccessException {
@@ -263,19 +267,20 @@ public class UserDAO {
         }
 
         String sql = "UPDATE staff SET password_ = ? WHERE staff_id = ? AND password_ = ?";
-        try (Connection con = DBConnection.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
+        Connection con = DBConnection.getConnection();
             if (con == null) {
                 throw new SQLException("Database connection is null!");
             }
-            ps.setString(1, newPassword);
-            ps.setString(2, trimmedId);
-            ps.setString(3, oldPassword);
-            int rowsUpdated = ps.executeUpdate();
-            if (rowsUpdated == 0) {
-                throw new InvalidStaffIdException("Password change failed: Incorrect old password or Staff ID does not exist.");
-            }
-            return true;
+
+            try ( PreparedStatement ps = con.prepareStatement(sql)) {
+                ps.setString(1, newPassword);
+                ps.setString(2, trimmedId);
+                ps.setString(3, oldPassword);
+                int rowsUpdated = ps.executeUpdate();
+                if (rowsUpdated == 0) {
+                    throw new InvalidStaffIdException("Password change failed: Incorrect old password or Staff ID does not exist.");
+                }
+                return true;
         }
     }
 
