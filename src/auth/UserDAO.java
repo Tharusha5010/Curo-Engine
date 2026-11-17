@@ -1,8 +1,11 @@
 package auth;
 
+
+
 import database.DBConnection;
 import exceptions.InvalidStaffIdException;
 import exceptions.UnauthorizedAccessException;
+import inventory.InventoryDAO;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -11,14 +14,19 @@ import java.util.ArrayList;
 import java.util.List;
 import models.StaffMember;
 
+
+
 public class UserDAO {
 
     //Check if staff ID belongs to an owner
     public boolean isOwner(String staffId) {
-        String query = "SELECT role_ FROM staff WHERE staff_id = ?";
+        if (staffId == null || staffId.trim().isEmpty()) {
+            return false;
+        }
+        String query = "SELECT role_ FROM staff WHERE staff_id = ? AND status_ = 'ACTIVE'";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
-            stmt.setString(1, staffId);
+            stmt.setString(1, staffId.trim());
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     return "OWNER".equalsIgnoreCase(rs.getString("role_"));
@@ -32,10 +40,13 @@ public class UserDAO {
 
     //Get staff name by ID
     public String getStaffName(String staffId) {
+        if (staffId == null || staffId.trim().isEmpty()) {
+            return "";
+        }
         String query = "SELECT staff_name FROM staff WHERE staff_id = ?";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
-            stmt.setString(1, staffId);
+            stmt.setString(1, staffId.trim());
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     return rs.getString("staff_name");
@@ -73,7 +84,7 @@ public class UserDAO {
             throw new InvalidStaffIdException("Invalid Staff ID or password.");
         }
         if (!"ACTIVE".equalsIgnoreCase(member.getStatus())) {
-            throw new InvalidStaffIdException("Staff ID " + staffId + " is inactive.");
+            throw new InvalidStaffIdException("Staff ID " + staffId.trim() + " is inactive.");
         }
 
         //Remove password before saving user in session
@@ -87,9 +98,14 @@ public class UserDAO {
         );
 
         UserSession.setCurrentUser(sessionUser);
+
+        //Sync FAST/SLOW moving classifications and generate startup expiry/low-stock alerts
+        new InventoryDAO().checkAndGenerateStartupAlerts();
+
         return sessionUser;
     }
 
+    
 
 
     //Add new staff member (Owner only)
@@ -112,7 +128,7 @@ public class UserDAO {
         if (role == null || role.trim().isEmpty()) {
             role = "CASHIER";
         } else {
-            role = role.toUpperCase();
+            role = role.trim().toUpperCase();
             if (!"OWNER".equals(role) && !"CASHIER".equals(role)) {
                 throw new IllegalArgumentException("Role must be strictly OWNER or CASHIER.");
             }
@@ -125,21 +141,24 @@ public class UserDAO {
         if (status == null || status.trim().isEmpty()) {
             status = "ACTIVE";
         } else {
-            status = status.toUpperCase();
+            status = status.trim().toUpperCase();
             if (!"ACTIVE".equals(status) && !"INACTIVE".equals(status)) {
                 throw new IllegalArgumentException("Status must be strictly ACTIVE or INACTIVE.");
             }
         }
 
-        if (staff.getContactNumber() == null || !staff.getContactNumber().matches("\\d{10}")) {
+        if (staff.getContactNumber() == null || !staff.getContactNumber().trim().matches("\\d{10}")) {
             throw new IllegalArgumentException("Contact number must be exactly 10 digits.");
         }
 
         String newId = staff.getStaffId();
         if (newId == null || newId.trim().isEmpty()) {
             newId = generateNextId(role);
-        } else if (findByIdWithPassword(newId) != null) {
-            throw new IllegalArgumentException("Staff ID " + newId + " already exists.");
+        } else {
+            newId = newId.trim().toUpperCase();
+            if (findByIdWithPassword(newId) != null) {
+                throw new IllegalArgumentException("Staff ID " + newId + " already exists.");
+            }
         }
 
         String sql = "INSERT INTO staff (staff_id, staff_name, role_, contact_number, password_, status_) "
@@ -147,16 +166,20 @@ public class UserDAO {
 
         try (Connection con = DBConnection.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
+            if (con == null) {
+                throw new SQLException("Database connection is null!");
+            }
             ps.setString(1, newId);
             ps.setString(2, staff.getStaffName().trim());
             ps.setString(3, role);
-            ps.setString(4, staff.getContactNumber());
+            ps.setString(4, staff.getContactNumber().trim());
             ps.setString(5, staff.getPassword());
             ps.setString(6, status);
             return ps.executeUpdate() > 0;
         }
     }
 
+    
 
 
     //Change staff account status to ACTIVE or INACTIVE (Owner only)
@@ -164,23 +187,30 @@ public class UserDAO {
         if (!UserSession.isOwner()) {
             throw new UnauthorizedAccessException("Unauthorized: Only an active Owner can update staff status.");
         }
-        if (newStatus == null || (!"ACTIVE".equalsIgnoreCase(newStatus) && !"INACTIVE".equalsIgnoreCase(newStatus))) {
+        if (staffId == null || staffId.trim().isEmpty()) {
+            throw new InvalidStaffIdException("Staff ID cannot be empty.");
+        }
+        if (newStatus == null || (!"ACTIVE".equalsIgnoreCase(newStatus.trim()) && !"INACTIVE".equalsIgnoreCase(newStatus.trim()))) {
             throw new IllegalArgumentException("Status must be strictly ACTIVE or INACTIVE.");
         }
 
-        String normalizedStatus = newStatus.toUpperCase();
+        String normalizedStatus = newStatus.trim().toUpperCase();
+        String trimmedId = staffId.trim();
         
         //Stop owner from deactivating their own account
         StaffMember currentUser = UserSession.getCurrentUser();
-        if (currentUser != null && currentUser.getStaffId().equals(staffId) && "INACTIVE".equals(normalizedStatus)) {
+        if (currentUser != null && currentUser.getStaffId().equalsIgnoreCase(trimmedId) && "INACTIVE".equals(normalizedStatus)) {
             throw new UnauthorizedAccessException("Safeguard Violation: Owners cannot deactivate their own active account.");
         }
 
         String sql = "UPDATE staff SET status_ = ? WHERE staff_id = ?";
         try (Connection con = DBConnection.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
+            if (con == null) {
+                throw new SQLException("Database connection is null!");
+            }
             ps.setString(1, normalizedStatus);
-            ps.setString(2, staffId);
+            ps.setString(2, trimmedId);
             return ps.executeUpdate() > 0;
         }
     }
@@ -219,8 +249,9 @@ public class UserDAO {
             throw new IllegalArgumentException("Staff ID, old password, and new password must be provided.");
         }
 
+        String trimmedId = staffId.trim();
         StaffMember currentUser = UserSession.getCurrentUser();
-        boolean isSelf = currentUser != null && currentUser.getStaffId().equals(staffId);
+        boolean isSelf = currentUser != null && currentUser.getStaffId().equalsIgnoreCase(trimmedId);
         boolean isOwner = UserSession.isOwner();
 
         if (!isSelf && !isOwner) {
@@ -234,8 +265,11 @@ public class UserDAO {
         String sql = "UPDATE staff SET password_ = ? WHERE staff_id = ? AND password_ = ?";
         try (Connection con = DBConnection.getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
+            if (con == null) {
+                throw new SQLException("Database connection is null!");
+            }
             ps.setString(1, newPassword);
-            ps.setString(2, staffId);
+            ps.setString(2, trimmedId);
             ps.setString(3, oldPassword);
             int rowsUpdated = ps.executeUpdate();
             if (rowsUpdated == 0) {
@@ -245,10 +279,11 @@ public class UserDAO {
         }
     }
 
+    
 
     //Verify owner login for one-time action approval
     public StaffMember verifyOwnerOverride(String staffId, String password) throws SQLException, InvalidStaffIdException {
-        if (staffId == null || staffId.trim().isEmpty() || password == null || password.trim().isEmpty()) {
+        if (staffId == null || staffId.trim().isEmpty() || password == null || password.isEmpty()) {
             return null;
         }
 
