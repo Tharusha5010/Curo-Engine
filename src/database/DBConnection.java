@@ -13,7 +13,8 @@ import java.util.Properties;
 
 public class DBConnection {
 
-    
+
+    @SuppressWarnings("CallToPrintStackTrace")
     public static Connection getConnection() {
         Connection conn = null;
         Properties props = new Properties();
