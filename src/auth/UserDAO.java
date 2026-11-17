@@ -2,6 +2,7 @@ package auth;
 
 
 
+import database.BaseDAO;
 import database.DBConnection;
 import exceptions.InvalidStaffIdException;
 import exceptions.UnauthorizedAccessException;
@@ -16,7 +17,12 @@ import models.StaffMember;
 
 
 
-public class UserDAO {
+public class UserDAO extends BaseDAO {
+
+    @Override
+    public String getTableName() {
+        return "staff";
+    }
 
     //Check if staff ID belongs to an owner
     public boolean isOwner(String staffId) {
