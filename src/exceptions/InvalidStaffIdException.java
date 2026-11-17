@@ -1,6 +1,6 @@
 package exceptions;
 
-public class InvalidStaffIdException extends Exception {
+public class InvalidStaffIdException extends PharmacyException {
     
     //Default general error message
     public InvalidStaffIdException() {
