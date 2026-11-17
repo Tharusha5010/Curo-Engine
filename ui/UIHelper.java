@@ -2,12 +2,12 @@ package ui;
 
 
 
-import javax.swing.*;
-import javax.swing.border.Border;
-import javax.swing.table.JTableHeader;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import javax.swing.*;
+import javax.swing.border.Border;
+import javax.swing.table.JTableHeader;
 
 
 
@@ -123,4 +123,54 @@ public class UIHelper {
         label.setForeground(Theme.TEXT_DARK);
         return label;
     }
+
+
+
+    //Display Virtual Thermal Receipt popup with Print/Save-as-PDF button
+    @SuppressWarnings("UseSpecificCatch")
+    public static void showVirtualThermalReceipt(Component parent, String receiptText, int billId) {
+        JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(parent), "Receipt #" + billId, Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setSize(380, 520);
+        dialog.setLocationRelativeTo(parent);
+        dialog.setLayout(new BorderLayout(10, 10));
+
+
+        JTextArea receiptArea = new JTextArea(receiptText);
+        receiptArea.setFont(new Font("Consolas", Font.PLAIN, 12));
+        receiptArea.setEditable(false);
+        receiptArea.setBackground(new Color(255, 255, 245)); // Thermal paper tint
+        receiptArea.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+
+        JScrollPane scrollPane = new JScrollPane(receiptArea);
+        dialog.add(scrollPane, BorderLayout.CENTER);
+
+
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
+        JButton btnPrint = new JButton("Print / Save PDF");
+        JButton btnClose = new JButton("Close");
+        stylePrimaryButton(btnPrint);
+        styleSecondaryButton(btnClose);
+
+
+        btnPrint.addActionListener(e -> {
+            try {
+                receiptArea.print(); // Opens system print dialog (supports Microsoft Print to PDF & Thermal Printers)
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(dialog, "Print error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        btnClose.addActionListener(e -> dialog.dispose());
+
+
+        btnPanel.add(btnPrint);
+        btnPanel.add(btnClose);
+        dialog.add(btnPanel, BorderLayout.SOUTH);
+
+        
+        dialog.setVisible(true);
+    }
+
+
 }
