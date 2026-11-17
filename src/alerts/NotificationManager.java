@@ -2,11 +2,11 @@ package alerts;
 
 
 
-import models.Notification;
-import javax.swing.SwingUtilities;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import javax.swing.SwingUtilities;
+import models.Notification;
 
 
 
@@ -31,6 +31,8 @@ public class NotificationManager {
 
     
     //Get the single instance safely
+
+    @SuppressWarnings("DoubleCheckedLocking")
     public static NotificationManager getInstance() {
         if (instance == null) {
             synchronized (NotificationManager.class) {
