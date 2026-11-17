@@ -1,3 +1,0 @@
-db.url=jdbc:sqlserver://localhost\SQLEXPRESS01;databaseName=curo_db;encrypt=true;trustServerCertificate=true;
-db.user=curoAdmin
-db.password=YOUR_PASSWORD_HERE
