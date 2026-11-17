@@ -1,6 +1,9 @@
 # Compiled java class files
 *.class
 
+# Database configuration file (contain local credentials)
+db.properties
+
 # Log files
 *.log 
 
@@ -9,6 +12,7 @@
 .settings/
 .classpath/
 .project/
+bin/
 
 # OS generated files
 .DS_Store
