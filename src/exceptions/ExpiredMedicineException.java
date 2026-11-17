@@ -1,6 +1,6 @@
 package exceptions;
 
-public class ExpiredMedicineException extends Exception {
+public class ExpiredMedicineException extends PharmacyException {
 
     //Default general error message
     public ExpiredMedicineException() {
