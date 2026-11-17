@@ -1,6 +1,6 @@
 package exceptions;
 
-public class UnauthorizedAccessException extends Exception {
+public class UnauthorizedAccessException extends PharmacyException {
     
     //Default general error message
     public UnauthorizedAccessException() {
