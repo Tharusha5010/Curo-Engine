@@ -7,7 +7,7 @@ import java.sql.Timestamp;
 
 
 //Declare Class and Encapsulated Variables
-public class CanceledBill {
+public final class CanceledBill {
 
     private int cancelId;
 	private int billId;
