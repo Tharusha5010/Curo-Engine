@@ -2,9 +2,9 @@ package auth;
 
 
 
-import models.StaffMember;
-import javax.swing.*;
 import java.awt.Component;
+import javax.swing.*;
+import models.StaffMember;
 
 
 
@@ -36,6 +36,7 @@ public class UserSession {
 
  
     // Request One-Time Owner Override
+    @SuppressWarnings("UseSpecificCatch")
     public static StaffMember requestOwnerOverride(Component parent, String warningMessage) {
         Object[] options = {"Owner Override", "Skip / Cancel"};
         int choice = JOptionPane.showOptionDialog(

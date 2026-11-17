@@ -98,7 +98,5 @@ public class BillItem {
     public double getLineTotal() {
         return lineTotal;
     }
-    public void setLineTotal(double lineTotal) {
-        this.lineTotal = lineTotal;
-    }
+
 }

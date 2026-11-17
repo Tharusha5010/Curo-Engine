@@ -192,13 +192,13 @@ public class BillingDAO extends BaseDAO {
                         updateStmt.executeUpdate();
                     }
 
+                    double effectivePrice = bill.isFreeIssue() ? 0.0 : unitPrice;
                     BillItem batchLineItem = new BillItem(
                         batch.medicineId,
                         medName,
-                        unitPrice,
+                        effectivePrice,
                         deductFromThisBatch
                     );
-                    batchLineItem.setLineTotal(lineTotal);
                     finalizedBatchItems.add(batchLineItem);
 
                     remainingQtyNeeded -= deductFromThisBatch;

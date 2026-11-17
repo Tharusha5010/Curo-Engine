@@ -6,7 +6,6 @@ import database.BaseDAO;
 import database.DBConnection;
 import exceptions.InvalidStaffIdException;
 import exceptions.UnauthorizedAccessException;
-import inventory.InventoryDAO;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -104,9 +103,6 @@ public class UserDAO extends BaseDAO {
         );
 
         UserSession.setCurrentUser(sessionUser);
-
-        //Sync FAST/SLOW moving classifications and generate startup expiry/low-stock alerts
-        new InventoryDAO().checkAndGenerateStartupAlerts();
 
         return sessionUser;
     }
