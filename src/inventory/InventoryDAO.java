@@ -4,12 +4,9 @@ package inventory;
 
 import alerts.NotificationManager;
 import auth.UserSession;
-import database.DBConnection;
+import database.BaseDAO;
+import database.Repository;
 import exceptions.UnauthorizedAccessException;
-import models.Medicine;
-import models.StaffMember;
-
-
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
@@ -20,19 +17,36 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import models.Medicine;
+import models.StaffMember;
 
 
 
-public class InventoryDAO {
+public class InventoryDAO extends BaseDAO implements Repository<Medicine, Integer> {
+
 
     //Check and return database connection
-    private Connection getValidConnection() throws SQLException {
-        Connection conn = DBConnection.getConnection();
-        if (conn == null) {
-            throw new SQLException("Database connection is null!");
-        }
-        return conn;
+    @Override
+    public String getTableName() {
+        return "inventory";
     }
+
+    @Override 
+    public boolean save(Medicine med) throws Exception {
+        return addMedicineBatch(med);
+    }
+
+    @Override 
+    public Medicine findById (Integer id) throws SQLException {
+        return getMedicineById(id);
+    }
+
+    @Override
+    public List<Medicine> findAll () throws SQLException {
+        return getAllInventory();
+    }
+
+
 
     //Check if logged-in user is an active owner
     private void verifyOwnerAccess() throws UnauthorizedAccessException {

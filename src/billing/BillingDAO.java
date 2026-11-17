@@ -4,7 +4,7 @@ package billing;
 
 import alerts.NotificationManager;
 import auth.UserSession;
-import database.DBConnection;
+import database.BaseDAO;
 import exceptions.ExpiredMedicineException;
 import exceptions.OutOfStockException;
 import exceptions.UnauthorizedAccessException;
@@ -22,24 +22,22 @@ import models.StaffMember;
 
 
 
-public class BillingDAO {
+public class BillingDAO extends BaseDAO {
 
     
     private final InventoryDAO inventoryDAO = new InventoryDAO();
 
     
-    //Check and return database connection
-    private Connection getValidConnection() throws SQLException {
-        Connection conn = DBConnection.getConnection();
-        if (conn == null) {
-            throw new SQLException("Database connection is null!");
-        }
-        return conn;
-    }
+    //private Connection getValidConnection() throws SQLException {
+    @Override 
+     public String getTableName () {
+         return "Bills";
+         }
 
 
     
     //Create a new bill and deduct stock using FEFO
+    @SuppressWarnings({"UseSpecificCatch", "CallToPrintStackTrace"})
     public int createBill(Bill bill) throws UnauthorizedAccessException, OutOfStockException, ExpiredMedicineException, SQLException {
         if (bill == null || bill.getItems() == null || bill.getItems().isEmpty()) {
             throw new IllegalArgumentException("Bill must contain at least one item.");
@@ -316,6 +314,7 @@ public class BillingDAO {
 
     
     //Cancel a bill and restore stock (Owner only)
+    @SuppressWarnings("UseSpecificCatch")
     public boolean cancelBill(int billId, String reason) throws UnauthorizedAccessException, SQLException, IllegalStateException {
         if (!UserSession.isOwner()) {
             throw new UnauthorizedAccessException("Only an Owner is authorized to cancel bills!");
