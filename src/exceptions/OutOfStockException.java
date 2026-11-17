@@ -1,6 +1,6 @@
 package exceptions;
 
-public class OutOfStockException extends Exception {
+public class OutOfStockException extends PharmacyException {
     
     //Default general error message
     public OutOfStockException() {
