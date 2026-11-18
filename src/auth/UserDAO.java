@@ -207,6 +207,43 @@ public class UserDAO extends BaseDAO {
         }
         return list;
     }
+ //Update staff password
+    public boolean changePassword(String staffId, String oldPassword, String newPassword) 
+            throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
+        if (staffId == null || staffId.trim().isEmpty() || oldPassword == null || newPassword == null) {
+            throw new IllegalArgumentException("Staff ID, old password, and new password must be provided.");
+        }
 
+        String trimmedId = staffId.trim();
+        StaffMember currentUser = UserSession.getCurrentUser();
+        boolean isSelf = currentUser != null && currentUser.getStaffId().equalsIgnoreCase(trimmedId);
+        boolean isOwner = UserSession.isOwner();
+
+        if (!isSelf && !isOwner) {
+            throw new UnauthorizedAccessException("Unauthorized: You can only change your own password unless you are an Owner.");
+        }
+
+        if (newPassword.isEmpty() || newPassword.length() > 50) {
+            throw new IllegalArgumentException("New password must be 1 to 50 characters.");
+        }
+
+        String sql = "UPDATE staff SET password_ = ? WHERE staff_id = ? AND password_ = ?";
+        Connection con = DBConnection.getConnection();
+            if (con == null) {
+                throw new SQLException("Database connection is null!");
+            }
+
+            try ( PreparedStatement ps = con.prepareStatement(sql)) {
+                ps.setString(1, newPassword);
+                ps.setString(2, trimmedId);
+                ps.setString(3, oldPassword);
+                int rowsUpdated = ps.executeUpdate();
+                if (rowsUpdated == 0) {
+                    throw new InvalidStaffIdException("Password change failed: Incorrect old password or Staff ID does not exist.");
+                }
+                return true;
+        }
     }
+
+}
 
