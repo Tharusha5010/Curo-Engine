@@ -62,3 +62,40 @@ public class NotificationManager {
     }
 
 
+    //Add a new alert and update all screens
+    public void addNotification(String type, String title, String message) {
+        // Remove old alert if same type and title already exist
+        for (int i = 0; i < notifications.size(); i++) {
+            Notification existing = notifications.get(i);
+            if (existing.getType() != null && existing.getTitle() != null &&
+                existing.getType().equalsIgnoreCase(type) &&
+                existing.getTitle().equalsIgnoreCase(title)) {
+                notifications.remove(i);
+                break;
+            }
+        }
+
+        
+        //Add newest alert to the top
+        Notification newNotification = new Notification(type, title, message);
+        notifications.add(0, newNotification);
+        notifySubscribers();
+    }
+
+    
+
+    //Update UI safely on Swing thread
+    private void notifySubscribers() {
+        for (Runnable listener : listeners) {
+            SwingUtilities.invokeLater(listener);
+        }
+    }
+
+
+    
+    //Return a safe copy of all alerts
+    public List<Notification> getAllAlerts() {
+        return new ArrayList<>(notifications);
+    }
+
+
