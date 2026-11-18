@@ -148,5 +148,38 @@ public class UserDAO extends BaseDAO {
                 return ps.executeUpdate() > 0;
         }
     }
+//Change staff account status to ACTIVE or INACTIVE (Owner only)
+    public boolean updateStaffStatus(String staffId, String newStatus) throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
+        if (!UserSession.isOwner()) {
+            throw new UnauthorizedAccessException("Unauthorized: Only an active Owner can update staff status.");
+        }
+        if (staffId == null || staffId.trim().isEmpty()) {
+            throw new InvalidStaffIdException("Staff ID cannot be empty.");
+        }
+        if (newStatus == null || (!"ACTIVE".equalsIgnoreCase(newStatus.trim()) && !"INACTIVE".equalsIgnoreCase(newStatus.trim()))) {
+            throw new IllegalArgumentException("Status must be strictly ACTIVE or INACTIVE.");
+        }
 
-}
+        String normalizedStatus = newStatus.trim().toUpperCase();
+        String trimmedId = staffId.trim();
+        
+        //Stop owner from deactivating their own account
+        StaffMember currentUser = UserSession.getCurrentUser();
+        if (currentUser != null && currentUser.getStaffId().equalsIgnoreCase(trimmedId) && "INACTIVE".equals(normalizedStatus)) {
+            throw new UnauthorizedAccessException("Safeguard Violation: Owners cannot deactivate their own active account.");
+        }
+
+        String sql = "UPDATE staff SET status_ = ? WHERE staff_id = ?";
+        Connection con = DBConnection.getConnection();
+            if (con == null) {
+                throw new SQLException("Database connection is null!");
+            }
+
+            try (PreparedStatement ps = con.prepareStatement(sql)) {
+                ps.setString(1, normalizedStatus);
+                ps.setString(2, trimmedId);
+                return ps.executeUpdate() > 0;
+            }
+        }
+    }
+
