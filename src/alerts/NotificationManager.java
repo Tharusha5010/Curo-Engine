@@ -62,3 +62,15 @@ public class NotificationManager {
     }
 
 
+    //Add a new alert and update all screens
+    public void addNotification(String type, String title, String message) {
+        // Remove old alert if same type and title already exist
+        for (int i = 0; i < notifications.size(); i++) {
+            Notification existing = notifications.get(i);
+            if (existing.getType() != null && existing.getTitle() != null &&
+                existing.getType().equalsIgnoreCase(type) &&
+                existing.getTitle().equalsIgnoreCase(title)) {
+                notifications.remove(i);
+                break;
+            }
+        }
