@@ -1,5 +1,7 @@
 package auth;
 
+
+
 import database.BaseDAO;
 import database.DBConnection;
 import exceptions.InvalidStaffIdException;
@@ -20,6 +22,7 @@ public class UserDAO extends BaseDAO {
     public String getTableName() {
         return "staff";
     }
+
     //Check if staff ID belongs to an owner
     public boolean isOwner(String staffId) {
         if (staffId == null || staffId.trim().isEmpty()) {
@@ -39,7 +42,28 @@ public class UserDAO extends BaseDAO {
         }
         return false;
     }
-//Check if staff ID is an active owner
+
+    //Get staff name by ID
+    public String getStaffName(String staffId) {
+        if (staffId == null || staffId.trim().isEmpty()) {
+            return "";
+        }
+        String query = "SELECT staff_name FROM staff WHERE staff_id = ?";
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            stmt.setString(1, staffId.trim());
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("staff_name");
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error retrieving staff name: " + e.getMessage());
+        }
+        return staffId;
+    }
+
+    //Check if staff ID is an active owner
     public void verifyActiveOwner(String staffId) throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
         if (staffId == null || staffId.trim().isEmpty()) {
             throw new InvalidStaffIdException("Staff ID cannot be empty.");
@@ -49,7 +73,10 @@ public class UserDAO extends BaseDAO {
             throw new UnauthorizedAccessException("Unauthorized Access: " + staffName + " is either not an Owner or their account is inactive.");
         }
     }
-//Log in user and save session
+
+
+
+    //Log in user and save session
     public StaffMember loginUser(String staffId, String password)
             throws SQLException, InvalidStaffIdException {
         if (staffId == null || staffId.trim().isEmpty() || password == null || password.isEmpty()) {
@@ -64,8 +91,8 @@ public class UserDAO extends BaseDAO {
         if (!"ACTIVE".equalsIgnoreCase(member.getStatus())) {
             throw new InvalidStaffIdException("Staff ID " + staffId.trim() + " is inactive.");
         }
-    }
-//Remove password before saving user in session
+
+        //Remove password before saving user in session
         StaffMember sessionUser = new StaffMember(
             member.getStaffId(),
             member.getStaffName(),
@@ -79,6 +106,10 @@ public class UserDAO extends BaseDAO {
 
         return sessionUser;
     }
+
+    
+
+
     //Add new staff member (Owner only)
     public boolean registerStaff(StaffMember staff) throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
         if (!UserSession.isOwner()) {
@@ -104,7 +135,10 @@ public class UserDAO extends BaseDAO {
                 throw new IllegalArgumentException("Role must be strictly OWNER or CASHIER.");
             }
         }
- //Set default status to ACTIVE and check valid values
+
+
+
+        //Set default status to ACTIVE and check valid values
         String status = staff.getStatus();
         if (status == null || status.trim().isEmpty()) {
             status = "ACTIVE";
@@ -148,7 +182,11 @@ public class UserDAO extends BaseDAO {
                 return ps.executeUpdate() > 0;
         }
     }
-//Change staff account status to ACTIVE or INACTIVE (Owner only)
+
+    
+
+
+    //Change staff account status to ACTIVE or INACTIVE (Owner only)
     public boolean updateStaffStatus(String staffId, String newStatus) throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
         if (!UserSession.isOwner()) {
             throw new UnauthorizedAccessException("Unauthorized: Only an active Owner can update staff status.");
@@ -181,7 +219,9 @@ public class UserDAO extends BaseDAO {
                 return ps.executeUpdate() > 0;
             }
         }
-     //Get all staff records (Owner only)
+    
+
+    //Get all staff records (Owner only)
     public List<StaffMember> getAllStaff() throws SQLException, UnauthorizedAccessException {
         if (!UserSession.isOwner()) {
             throw new UnauthorizedAccessException("Unauthorized: Only an active Owner can view all staff records.");
@@ -207,7 +247,8 @@ public class UserDAO extends BaseDAO {
         }
         return list;
     }
- //Update staff password
+
+    //Update staff password
     public boolean changePassword(String staffId, String oldPassword, String newPassword) 
             throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
         if (staffId == null || staffId.trim().isEmpty() || oldPassword == null || newPassword == null) {
@@ -244,7 +285,10 @@ public class UserDAO extends BaseDAO {
                 return true;
         }
     }
-//Verify owner login for one-time action approval
+
+    
+
+    //Verify owner login for one-time action approval
     public StaffMember verifyOwnerOverride(String staffId, String password) throws SQLException, InvalidStaffIdException {
         if (staffId == null || staffId.trim().isEmpty() || password == null || password.isEmpty()) {
             return null;
@@ -267,7 +311,11 @@ public class UserDAO extends BaseDAO {
         }
         return null;
     }
- //Create next staff ID (O001, C001...)
+
+
+
+
+    //Create next staff ID (O001, C001...)
     public String generateNextId(String role) throws SQLException {
         String prefix = "OWNER".equalsIgnoreCase(role) ? "O" : "C";
         String sql = "SELECT MAX(staff_id) FROM staff WHERE staff_id LIKE ?";
@@ -301,5 +349,30 @@ public class UserDAO extends BaseDAO {
         return null;
     }
 
-}
+    
 
+    //Find staff member by ID including password for login check
+    private StaffMember findByIdWithPassword(String staffId) throws SQLException {
+        String sql = "SELECT staff_id, staff_name, role_, contact_number, password_, status_ "
+                   + "FROM staff WHERE staff_id = ?";
+
+        try (Connection con = DBConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setString(1, staffId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return new StaffMember(
+                        rs.getString("staff_id"),
+                        rs.getString("staff_name"),
+                        rs.getString("role_"),
+                        rs.getString("contact_number"),
+                        rs.getString("password_"),
+                        rs.getString("status_")
+                    );
+                }
+            }
+        }
+        
+        return null;
+    }
+}
