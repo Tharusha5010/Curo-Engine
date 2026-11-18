@@ -267,6 +267,39 @@ public class UserDAO extends BaseDAO {
         }
         return null;
     }
+ //Create next staff ID (O001, C001...)
+    public String generateNextId(String role) throws SQLException {
+        String prefix = "OWNER".equalsIgnoreCase(role) ? "O" : "C";
+        String sql = "SELECT MAX(staff_id) FROM staff WHERE staff_id LIKE ?";
+
+        try (Connection con = DBConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setString(1, prefix + "[0-9]%");
+            try (ResultSet rs = ps.executeQuery()) {
+                int next = 1;
+                if (rs.next() && rs.getString(1) != null) {
+                    next = Integer.parseInt(rs.getString(1).substring(1)) + 1;
+                }
+                return String.format("%s%03d", prefix, next);
+            }
+        }
+    }
+
+    //Find staff member by ID without password
+    public StaffMember findById(String staffId) throws SQLException {
+        StaffMember member = findByIdWithPassword(staffId);
+        if (member != null) {
+            return new StaffMember(
+                member.getStaffId(),
+                member.getStaffName(),
+                member.getRole(),
+                member.getContactNumber(),
+                "",
+                member.getStatus()
+            );
+        }
+        return null;
+    }
 
 }
 
