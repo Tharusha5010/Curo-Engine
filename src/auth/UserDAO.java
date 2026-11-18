@@ -20,4 +20,24 @@ public class UserDAO extends BaseDAO {
     public String getTableName() {
         return "staff";
     }
+    //Check if staff ID belongs to an owner
+    public boolean isOwner(String staffId) {
+        if (staffId == null || staffId.trim().isEmpty()) {
+            return false;
+        }
+        String query = "SELECT role_ FROM staff WHERE staff_id = ? AND status_ = 'ACTIVE'";
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            stmt.setString(1, staffId.trim());
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return "OWNER".equalsIgnoreCase(rs.getString("role_"));
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error verifying user role: " + e.getMessage());
+        }
+        return false;
+    }
+
 }
