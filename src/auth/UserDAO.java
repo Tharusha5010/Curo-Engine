@@ -65,5 +65,44 @@ public class UserDAO extends BaseDAO {
             throw new InvalidStaffIdException("Staff ID " + staffId.trim() + " is inactive.");
         }
     }
+//Remove password before saving user in session
+        StaffMember sessionUser = new StaffMember(
+            member.getStaffId(),
+            member.getStaffName(),
+            member.getRole(),
+            member.getContactNumber(),
+            "", //Password excluded for session security
+            member.getStatus()
+        );
+
+        UserSession.setCurrentUser(sessionUser);
+
+        return sessionUser;
+    }
+    //Add new staff member (Owner only)
+    public boolean registerStaff(StaffMember staff) throws SQLException, UnauthorizedAccessException, InvalidStaffIdException {
+        if (!UserSession.isOwner()) {
+            throw new UnauthorizedAccessException("Unauthorized: Only an active Owner can register new staff.");
+        }
+        if (staff == null) {
+            throw new IllegalArgumentException("Staff object cannot be null.");
+        }
+        if (staff.getStaffName() == null || staff.getStaffName().trim().isEmpty()) {
+            throw new IllegalArgumentException("Staff name cannot be empty.");
+        }
+        if (staff.getPassword() == null || staff.getPassword().isEmpty() || staff.getPassword().length() > 50) {
+            throw new IllegalArgumentException("Password must be 1 to 50 characters.");
+        }
+
+        //Set default role to CASHIER and check valid values
+        String role = staff.getRole();
+        if (role == null || role.trim().isEmpty()) {
+            role = "CASHIER";
+        } else {
+            role = role.trim().toUpperCase();
+            if (!"OWNER".equals(role) && !"CASHIER".equals(role)) {
+                throw new IllegalArgumentException("Role must be strictly OWNER or CASHIER.");
+            }
+        }
 
 }
