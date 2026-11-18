@@ -104,5 +104,49 @@ public class UserDAO extends BaseDAO {
                 throw new IllegalArgumentException("Role must be strictly OWNER or CASHIER.");
             }
         }
+ //Set default status to ACTIVE and check valid values
+        String status = staff.getStatus();
+        if (status == null || status.trim().isEmpty()) {
+            status = "ACTIVE";
+        } else {
+            status = status.trim().toUpperCase();
+            if (!"ACTIVE".equals(status) && !"INACTIVE".equals(status)) {
+                throw new IllegalArgumentException("Status must be strictly ACTIVE or INACTIVE.");
+            }
+        }
+
+        if (staff.getContactNumber() == null || !staff.getContactNumber().trim().matches("\\d{10}")) {
+            throw new IllegalArgumentException("Contact number must be exactly 10 digits.");
+        }
+
+        String newId = staff.getStaffId();
+        if (newId == null || newId.trim().isEmpty()) {
+            newId = generateNextId(role);
+        } else {
+            newId = newId.trim().toUpperCase();
+            if (findByIdWithPassword(newId) != null) {
+                throw new IllegalArgumentException("Staff ID " + newId + " already exists.");
+            }
+        }
+
+        String sql = "INSERT INTO staff (staff_id, staff_name, role_, contact_number, password_, status_) "
+                   + "VALUES (?, ?, ?, ?, ?, ?)";
+
+        Connection con = DBConnection.getConnection();
+            if (con == null) {
+                throw new SQLException("Database connection is null!");
+            }
+
+            try ( PreparedStatement ps = con.prepareStatement(sql)) {
+
+                ps.setString(1, newId);
+                ps.setString(2, staff.getStaffName().trim());
+                ps.setString(3, role);
+                ps.setString(4, staff.getContactNumber().trim());
+                ps.setString(5, staff.getPassword());
+                ps.setString(6, status);
+                return ps.executeUpdate() > 0;
+        }
+    }
 
 }
