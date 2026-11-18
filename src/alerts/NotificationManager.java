@@ -45,3 +45,20 @@ public class NotificationManager {
     }
 
 
+    //Add a UI screen to get live updates
+    public void subscribe(Runnable listener) {
+        if (listener != null && !listeners.contains(listener)) {
+            listeners.add(listener);
+        }
+    }
+
+
+    
+    //Remove UI screen when closed
+    public void unsubscribe(Runnable listener) {
+        if (listener != null) {
+            listeners.remove(listener);
+        }
+    }
+
+
