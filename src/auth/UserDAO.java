@@ -181,5 +181,32 @@ public class UserDAO extends BaseDAO {
                 return ps.executeUpdate() > 0;
             }
         }
+     //Get all staff records (Owner only)
+    public List<StaffMember> getAllStaff() throws SQLException, UnauthorizedAccessException {
+        if (!UserSession.isOwner()) {
+            throw new UnauthorizedAccessException("Unauthorized: Only an active Owner can view all staff records.");
+        }
+
+        List<StaffMember> list = new ArrayList<>();
+        String sql = "SELECT staff_id, staff_name, role_, contact_number, status_ FROM staff ORDER BY staff_id";
+
+        try (Connection con = DBConnection.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                //Hide password by passing empty string
+                list.add(new StaffMember(
+                    rs.getString("staff_id"),
+                    rs.getString("staff_name"),
+                    rs.getString("role_"),
+                    rs.getString("contact_number"),
+                    "",
+                    rs.getString("status_")
+                ));
+            }
+        }
+        return list;
+    }
+
     }
 
