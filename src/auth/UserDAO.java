@@ -244,6 +244,29 @@ public class UserDAO extends BaseDAO {
                 return true;
         }
     }
+//Verify owner login for one-time action approval
+    public StaffMember verifyOwnerOverride(String staffId, String password) throws SQLException, InvalidStaffIdException {
+        if (staffId == null || staffId.trim().isEmpty() || password == null || password.isEmpty()) {
+            return null;
+        }
+
+        StaffMember member = findByIdWithPassword(staffId.trim());
+        if (member != null && "OWNER".equalsIgnoreCase(member.getRole()) 
+            && "ACTIVE".equalsIgnoreCase(member.getStatus()) 
+            && member.getPassword().equals(password)) {
+            
+            //Return owner details without changing current login session
+            return new StaffMember(
+                member.getStaffId(),
+                member.getStaffName(),
+                member.getRole(),
+                member.getContactNumber(),
+                "",
+                member.getStatus()
+            );
+        }
+        return null;
+    }
 
 }
 
