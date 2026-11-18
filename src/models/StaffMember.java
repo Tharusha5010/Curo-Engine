@@ -30,3 +30,53 @@ public class StaffMember {
         this.password = password;
         this.status = status;
     }
+
+//Reading and Updating private fields
+    public String getStaffId() { 
+        return staffId;
+    }
+    public void setStaffId(String staffId) { 
+        this.staffId = staffId; 
+    }
+
+    
+    public String getStaffName() {
+        return staffName; 
+    }
+    public void setStaffName(String staffName) { 
+        this.staffName = staffName; 
+    }
+
+    
+    public String getRole() {
+        return role;
+    }
+    public void setRole(String role) { 
+        this.role = role;
+    }
+
+    
+    public String getContactNumber() { 
+        return contactNumber;
+    }
+    public void setContactNumber(String contactNumber) {
+        this.contactNumber = contactNumber; 
+    }
+
+    
+    public String getPassword() { 
+        return password;
+    }
+    public void setPassword(String password) {
+        this.password = password; 
+    }
+
+    
+    public String getStatus() {
+        return status;
+    }
+    public void setStatus(String status) { 
+        this.status = status;
+    }
+
+}
