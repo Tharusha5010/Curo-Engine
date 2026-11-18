@@ -74,3 +74,28 @@ public class NotificationManager {
                 break;
             }
         }
+
+        
+        //Add newest alert to the top
+        Notification newNotification = new Notification(type, title, message);
+        notifications.add(0, newNotification);
+        notifySubscribers();
+    }
+
+    
+
+    //Update UI safely on Swing thread
+    private void notifySubscribers() {
+        for (Runnable listener : listeners) {
+            SwingUtilities.invokeLater(listener);
+        }
+    }
+
+
+    
+    //Return a safe copy of all alerts
+    public List<Notification> getAllAlerts() {
+        return new ArrayList<>(notifications);
+    }
+
+
