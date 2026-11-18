@@ -29,3 +29,19 @@ public class NotificationManager {
     }
 
 
+    //Get the single instance safely
+
+    @SuppressWarnings("DoubleCheckedLocking")
+    public static NotificationManager getInstance() {
+        if (instance == null) {
+            synchronized (NotificationManager.class) {
+                if (instance == null) {
+                    instance = new NotificationManager();
+                }
+            }
+        }
+        
+        return instance;
+    }
+
+
