@@ -20,7 +20,7 @@ import javax.swing.border.Border;
  * and shows scroll bars instead of squeezing/clipping its contents when the window
  * (or a Windows-scaled screen) is small.
  */
-public class FitScrollPane extends JScrollPane {
+public class FitScrollPanel extends JScrollPane {
 
     private static final long serialVersionUID = 1L;
 
