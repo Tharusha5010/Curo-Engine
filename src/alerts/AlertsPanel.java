@@ -99,3 +99,37 @@ public class AlertsPanel extends JPanel {
         titleBox.add(Box.createVerticalStrut(4));
         titleBox.add(lblSub);
         container.add(titleBox, BorderLayout.WEST);
+
+
+        // Filter & Action Controls
+        JPanel actionRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        actionRow.setBackground(Theme.MAIN_BG);
+
+        // Active count badge
+        lblAlertCountBadge = new JLabel("0 Active Alerts");
+        lblAlertCountBadge.setFont(Theme.BOLD_BODY_FONT);
+        lblAlertCountBadge.setForeground(Theme.TEXT_DARK);
+        lblAlertCountBadge.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(Theme.BORDER_COLOR, 1),
+            BorderFactory.createEmptyBorder(6, 12, 6, 12)
+        ));
+        lblAlertCountBadge.setOpaque(true);
+        lblAlertCountBadge.setBackground(Theme.CARD_BG);
+        actionRow.add(lblAlertCountBadge);
+        actionRow.add(Box.createHorizontalStrut(8));
+
+        // Filter Buttons
+        btnFilterAll = new JButton("All Alerts");
+        btnFilterExpiry = new JButton("Expiry Warnings");
+        btnFilterStock = new JButton("Low Stock Alerts");
+        btnRefresh = new JButton("Refresh");
+
+        styleFilterButton(btnFilterAll, true);
+        styleFilterButton(btnFilterExpiry, false);
+        styleFilterButton(btnFilterStock, false);
+        UIHelper.styleSecondaryButton(btnRefresh);
+
+        btnFilterAll.addActionListener(e -> setFilter(FilterMode.ALL));
+        btnFilterExpiry.addActionListener(e -> setFilter(FilterMode.EXPIRY));
+        btnFilterStock.addActionListener(e -> setFilter(FilterMode.LOW_STOCK));
+        btnRefresh.addActionListener(e -> loadAlertsTable());
