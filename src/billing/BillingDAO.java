@@ -313,6 +313,11 @@ public class BillingDAO extends BaseDAO {
 
 
     
+    //Cancel a bill with specific canceledBy staff ID and reason (Owner only)
+    public boolean cancelBill(int billId, String canceledBy, String reason) throws UnauthorizedAccessException, SQLException, IllegalStateException {
+        return cancelBill(billId, reason);
+    }
+
     //Cancel a bill and restore stock (Owner only)
     @SuppressWarnings("UseSpecificCatch")
     public boolean cancelBill(int billId, String reason) throws UnauthorizedAccessException, SQLException, IllegalStateException {
@@ -505,6 +510,53 @@ public class BillingDAO extends BaseDAO {
 
 
     
+    //Get today's total sales (excluding canceled bills)
+    public double getTodaySales() throws SQLException {
+        String sql = "SELECT ISNULL(SUM(net_total), 0.0) FROM bills " +
+                     "WHERE CAST(create_at AS DATE) = CAST(GETDATE() AS DATE) " +
+                     "  AND bill_id NOT IN (SELECT bill_id FROM canceled_bills)";
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+            if (rs.next()) {
+                return rs.getDouble(1);
+            }
+        }
+        return 0.0;
+    }
+
+    //Get daily sales for the last 7 days (Mon-Sun)
+    public Map<String, Double> getLast7DaysSales() throws SQLException {
+        Map<String, Double> salesMap = new LinkedHashMap<>();
+        String[] daysOfWeek = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
+        for (String d : daysOfWeek) {
+            salesMap.put(d, 0.0);
+        }
+
+        String sql = "SELECT create_at, net_total FROM bills " +
+                     "WHERE create_at >= DATEADD(DAY, -7, GETDATE()) " +
+                     "  AND bill_id NOT IN (SELECT bill_id FROM canceled_bills)";
+
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+            while (rs.next()) {
+                Timestamp ts = rs.getTimestamp("create_at");
+                double total = rs.getDouble("net_total");
+                if (ts != null) {
+                    java.time.LocalDate date = ts.toLocalDateTime().toLocalDate();
+                    String dayName = date.getDayOfWeek().getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH);
+                    if (salesMap.containsKey(dayName)) {
+                        salesMap.put(dayName, salesMap.get(dayName) + total);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Graceful fallback to 0.0
+        }
+        return salesMap;
+    }
+
     //Batch stock sorting (Helper)
     private static class BatchStock {
         int medicineId;

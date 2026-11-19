@@ -23,7 +23,6 @@ import models.Notification;
 import ui.Theme;
 import ui.UIHelper;
 
-
 /**
  * AlertsPanel renders live in-memory telemetry alerts (Expiry Warnings, 50% Low Stock thresholds, and Security).
  * Strictly read-only per system architecture; automatically updates in real time via NotificationManager subscription.
@@ -70,7 +69,6 @@ public class AlertsPanel extends JPanel {
         add(tableCard, BorderLayout.CENTER);
     }
 
-
     // =========================================================================
     // 1. Header & Summary Section
     // =========================================================================
@@ -99,7 +97,6 @@ public class AlertsPanel extends JPanel {
         titleBox.add(Box.createVerticalStrut(4));
         titleBox.add(lblSub);
         container.add(titleBox, BorderLayout.WEST);
-
 
         // Filter & Action Controls
         JPanel actionRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
@@ -133,7 +130,6 @@ public class AlertsPanel extends JPanel {
         btnFilterExpiry.addActionListener(e -> setFilter(FilterMode.EXPIRY));
         btnFilterStock.addActionListener(e -> setFilter(FilterMode.LOW_STOCK));
         btnRefresh.addActionListener(e -> loadAlertsTable());
-
 
         actionRow.add(btnFilterAll);
         actionRow.add(btnFilterExpiry);
@@ -208,7 +204,6 @@ public class AlertsPanel extends JPanel {
         tblAlerts = new JTable(tableModel);
         UIHelper.styleTable(tblAlerts);
 
-        
         // Column widths
         tblAlerts.getColumnModel().getColumn(0).setPreferredWidth(160);
         tblAlerts.getColumnModel().getColumn(1).setPreferredWidth(240);
@@ -248,7 +243,6 @@ public class AlertsPanel extends JPanel {
 
         return card;
     }
-
 
     // =========================================================================
     // 3. Live Auto-Update Subscription & Loading Logic
@@ -303,4 +297,3 @@ public class AlertsPanel extends JPanel {
         }
     }
 }
-

@@ -997,4 +997,3 @@ public class BillingPanel extends JPanel {
         public boolean isRequiresPrescription() { return requiresPrescription; }
     }
 }
-

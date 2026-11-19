@@ -134,7 +134,7 @@ public class Bill {
 
 
     public List<BillItem>getItems() {
-        return items;
+        return (this.items == null) ? new ArrayList<>() : new ArrayList<>(this.items);
     }
     public void setItems(List<BillItem> items) {
         this.items = (items != null) ? items : new ArrayList<>();

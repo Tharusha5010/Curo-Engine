@@ -3,7 +3,6 @@ package auth;
 
 
 import database.BaseDAO;
-import database.DBConnection;
 import exceptions.InvalidStaffIdException;
 import exceptions.UnauthorizedAccessException;
 import java.sql.Connection;
@@ -29,7 +28,7 @@ public class UserDAO extends BaseDAO {
             return false;
         }
         String query = "SELECT role_ FROM staff WHERE staff_id = ? AND status_ = 'ACTIVE'";
-        try (Connection conn = DBConnection.getConnection();
+        try (Connection conn = getValidConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
             stmt.setString(1, staffId.trim());
             try (ResultSet rs = stmt.executeQuery()) {
@@ -49,7 +48,7 @@ public class UserDAO extends BaseDAO {
             return "";
         }
         String query = "SELECT staff_name FROM staff WHERE staff_id = ?";
-        try (Connection conn = DBConnection.getConnection();
+        try (Connection conn = getValidConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
             stmt.setString(1, staffId.trim());
             try (ResultSet rs = stmt.executeQuery()) {
@@ -166,12 +165,8 @@ public class UserDAO extends BaseDAO {
         String sql = "INSERT INTO staff (staff_id, staff_name, role_, contact_number, password_, status_) "
                    + "VALUES (?, ?, ?, ?, ?, ?)";
 
-        Connection con = DBConnection.getConnection();
-            if (con == null) {
-                throw new SQLException("Database connection is null!");
-            }
-
-            try ( PreparedStatement ps = con.prepareStatement(sql)) {
+        try (Connection conn = getValidConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
 
                 ps.setString(1, newId);
                 ps.setString(2, staff.getStaffName().trim());
@@ -208,12 +203,8 @@ public class UserDAO extends BaseDAO {
         }
 
         String sql = "UPDATE staff SET status_ = ? WHERE staff_id = ?";
-        Connection con = DBConnection.getConnection();
-            if (con == null) {
-                throw new SQLException("Database connection is null!");
-            }
-
-            try (PreparedStatement ps = con.prepareStatement(sql)) {
+        try (Connection conn = getValidConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
                 ps.setString(1, normalizedStatus);
                 ps.setString(2, trimmedId);
                 return ps.executeUpdate() > 0;
@@ -230,8 +221,8 @@ public class UserDAO extends BaseDAO {
         List<StaffMember> list = new ArrayList<>();
         String sql = "SELECT staff_id, staff_name, role_, contact_number, status_ FROM staff ORDER BY staff_id";
 
-        try (Connection con = DBConnection.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql);
+        try (Connection conn = getValidConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 //Hide password by passing empty string
@@ -269,12 +260,8 @@ public class UserDAO extends BaseDAO {
         }
 
         String sql = "UPDATE staff SET password_ = ? WHERE staff_id = ? AND password_ = ?";
-        Connection con = DBConnection.getConnection();
-            if (con == null) {
-                throw new SQLException("Database connection is null!");
-            }
-
-            try ( PreparedStatement ps = con.prepareStatement(sql)) {
+        try (Connection conn = getValidConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
                 ps.setString(1, newPassword);
                 ps.setString(2, trimmedId);
                 ps.setString(3, oldPassword);
@@ -320,8 +307,8 @@ public class UserDAO extends BaseDAO {
         String prefix = "OWNER".equalsIgnoreCase(role) ? "O" : "C";
         String sql = "SELECT MAX(staff_id) FROM staff WHERE staff_id LIKE ?";
 
-        try (Connection con = DBConnection.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
+        try (Connection conn = getValidConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, prefix + "[0-9]%");
             try (ResultSet rs = ps.executeQuery()) {
                 int next = 1;
@@ -356,8 +343,8 @@ public class UserDAO extends BaseDAO {
         String sql = "SELECT staff_id, staff_name, role_, contact_number, password_, status_ "
                    + "FROM staff WHERE staff_id = ?";
 
-        try (Connection con = DBConnection.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
+        try (Connection conn = getValidConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, staffId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
