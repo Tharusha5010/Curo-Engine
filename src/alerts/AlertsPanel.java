@@ -46,3 +46,13 @@ public class AlertsPanel extends JPanel {
     private JButton btnFilterExpiry;
     private JButton btnFilterStock;
     private JButton btnRefresh;
+
+    
+    // Backend Notification Manager
+    private final NotificationManager notificationManager = NotificationManager.getInstance();
+
+    public AlertsPanel() {
+        initComponents();
+        registerLiveUpdates();
+        refreshAlertsTable();
+    }
