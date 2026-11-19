@@ -22,3 +22,50 @@ import javax.swing.table.DefaultTableModel;
 import models.Notification;
 import ui.Theme;
 import ui.UIHelper;
+
+
+/**
+ * AlertsPanel renders live in-memory telemetry alerts (Expiry Warnings, 50% Low Stock thresholds, and Security).
+ * Strictly read-only per system architecture; automatically updates in real time via NotificationManager subscription.
+ */
+public class AlertsPanel extends JPanel {
+
+    // Filter modes
+    private enum FilterMode {
+        ALL, EXPIRY, LOW_STOCK
+    }
+
+    private FilterMode currentFilter = FilterMode.ALL;
+
+    // UI Components
+    private JTable tblAlerts;
+    private DefaultTableModel tableModel;
+    private JLabel lblAlertCountBadge;
+
+    private JButton btnFilterAll;
+    private JButton btnFilterExpiry;
+    private JButton btnFilterStock;
+    private JButton btnRefresh;
+
+    // Backend Notification Manager
+    private final NotificationManager notificationManager = NotificationManager.getInstance();
+
+    public AlertsPanel() {
+        initComponents();
+        registerLiveUpdates();
+        refreshAlertsTable();
+    }
+
+    private void initComponents() {
+        setLayout(new BorderLayout(15, 15));
+        setBackground(Theme.MAIN_BG);
+        setBorder(BorderFactory.createEmptyBorder(20, 25, 20, 25));
+
+        // 1. Top Header & Summary
+        JPanel topSection = buildTopSection();
+        add(topSection, BorderLayout.NORTH);
+
+        // 2. Read-Only Alerts Table Card (STRICT RULE: No Delete/Dismiss/Clear/Edit buttons)
+        JPanel tableCard = buildTableCard();
+        add(tableCard, BorderLayout.CENTER);
+    }
