@@ -157,4 +157,4 @@ db.password=ict25954
 ## 🔑 Default Admin Login Credentials
 
 - **Staff ID:** `O001`
-- **Password:** `ict25954`
+- **Password:** `1234`
