@@ -1,0 +1,22 @@
+# Compiled java class files
+*.class
+
+# Database configuration file (contain local credentials)
+db.properties
+
+# Log files
+*.log 
+
+# VS Code settings directory
+.vscode/
+.settings/
+.classpath/
+.project/
+bin/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Generated bill receipts
+receipts/
