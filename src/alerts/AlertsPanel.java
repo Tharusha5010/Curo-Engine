@@ -105,3 +105,17 @@ public class AlertsPanel extends JPanel {
         // Filter & Action Controls
         JPanel actionRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actionRow.setBackground(Theme.MAIN_BG);
+
+        
+        // Active count badge
+        lblAlertCountBadge = new JLabel("0 Active Alerts");
+        lblAlertCountBadge.setFont(Theme.BOLD_BODY_FONT);
+        lblAlertCountBadge.setForeground(Theme.TEXT_DARK);
+        lblAlertCountBadge.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(Theme.BORDER_COLOR, 1),
+            BorderFactory.createEmptyBorder(6, 12, 6, 12)
+        ));
+        lblAlertCountBadge.setOpaque(true);
+        lblAlertCountBadge.setBackground(Theme.CARD_BG);
+        actionRow.add(lblAlertCountBadge);
+        actionRow.add(Box.createHorizontalStrut(8));
