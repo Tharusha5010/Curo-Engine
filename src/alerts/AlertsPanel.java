@@ -23,3 +23,14 @@ import javax.swing.table.DefaultTableModel;
 import models.Notification;
 import ui.Theme;
 import ui.UIHelper;
+
+/**
+ * AlertsPanel renders live in-memory telemetry alerts (Expiry Warnings, 50% Low Stock thresholds, and Security).
+ * Strictly read-only per system architecture; automatically updates in real time via NotificationManager subscription.
+ */
+public class AlertsPanel extends JPanel {
+
+    // Filter modes
+    private enum FilterMode {
+        ALL, EXPIRY, LOW_STOCK
+    }
