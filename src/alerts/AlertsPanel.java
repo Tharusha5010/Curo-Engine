@@ -174,3 +174,36 @@ public class AlertsPanel extends JPanel {
         styleFilterButton(btnFilterStock, mode == FilterMode.LOW_STOCK);
         loadAlertsTable();
     }
+
+    // =========================================================================
+    // 2. Read-Only Alerts Table Card (STRICT RULE: Read-Only in RAM)
+    // =========================================================================
+
+    private JPanel buildTableCard() {
+        JPanel card = new JPanel(new BorderLayout(10, 10));
+        UIHelper.styleCardPanel(card);
+
+        // Card Header
+        JPanel cardHeader = new JPanel(new BorderLayout());
+        cardHeader.setBackground(Theme.CARD_BG);
+
+        JLabel lblCardTitle = new JLabel("Active Notification Queue");
+        lblCardTitle.setFont(Theme.SUBTITLE_FONT);
+        lblCardTitle.setForeground(Theme.TEXT_DARK);
+        cardHeader.add(lblCardTitle, BorderLayout.WEST);
+
+        JLabel lblNotice = new JLabel("Read-Only: In-Memory alerts update automatically on inventory & billing events");
+        lblNotice.setFont(new Font("Segoe UI", Font.ITALIC, 12));
+        lblNotice.setForeground(Theme.TEXT_MUTED);
+        cardHeader.add(lblNotice, BorderLayout.EAST);
+
+        card.add(cardHeader, BorderLayout.NORTH);
+
+        // Columns: Alert Type, Title / Medicine, and Message / Details
+        String[] columns = {"Alert Type", "Title / Medicine", "Message / Details"};
+        tableModel = new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int col) {
+                return false; // Strictly read-only
+            }
+        };
