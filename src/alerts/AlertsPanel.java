@@ -34,3 +34,15 @@ public class AlertsPanel extends JPanel {
     private enum FilterMode {
         ALL, EXPIRY, LOW_STOCK
     }
+
+    private FilterMode currentFilter = FilterMode.ALL;
+
+    // UI Components
+    private JTable tblAlerts;
+    private DefaultTableModel tableModel;
+    private JLabel lblAlertCountBadge;
+
+    private JButton btnFilterAll;
+    private JButton btnFilterExpiry;
+    private JButton btnFilterStock;
+    private JButton btnRefresh;
