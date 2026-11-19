@@ -1,9 +1,3 @@
--- ============================================================
--- Curo Pharmacy System - Database setup (SQL Server)
--- Safe to run more than once: nothing is dropped or duplicated.
--- Run the whole script in SSMS / VS Code MSSQL as an admin login.
--- ============================================================
-
 -- Database Creation
 IF DB_ID('curo_db') IS NULL
     CREATE DATABASE curo_db;
@@ -91,6 +85,88 @@ GO
 
 -- Default Admin User
 IF NOT EXISTS (SELECT 1 FROM staff WHERE staff_id = 'O001')
-    INSERT INTO staff (staff_id,staff_name,role_,contact_number,password_,status_)
-    VALUES ('O001','System Owner','OWNER','0758402616','ict25954','ACTIVE');
+    INSERT INTO staff (staff_id, staff_name, role_, contact_number, password_, status_)
+    VALUES ('O001', 'System Owner', 'OWNER', '0758402616', '1234', 'ACTIVE');
+GO
+
+
+
+IF NOT EXISTS (SELECT 1 FROM staff WHERE staff_id = 'C001')
+    INSERT INTO staff (staff_id, staff_name, role_, contact_number, password_, status_)
+    VALUES ('C001', 'Sachintha', 'CASHIER', '0763412872', '0987', 'ACTIVE');
+GO
+
+-- Default Medicine
+If NOT EXISTS (SELECT 1 FROM inventory WHERE medicine_id = 1)
+INSERT INTO inventory (
+    medicine_name, 
+    company_name, 
+    batch_number, 
+    unit_price, 
+    stock_quantity, 
+    stock_date, 
+    exp_date, 
+    requires_prescription, 
+    moving_type
+)
+VALUES 
+    ('Paracetamol', 'State Pharmaceuticals Corp', 'BATCH001', 3.50, 500, '2026-01-10', '2028-01-10', 0, 'FAST'),
+    ('Amoxicillin', 'Pfizer', 'BATCH002', 18.50, 200, '2026-02-15', '2027-08-15', 1, 'FAST'),
+    ('Cetirizine', 'Cipla', 'BATCH003', 4.50, 1000, '2026-03-01', '2029-03-01', 0, 'SLOW'),
+    ('Ibuprofen', 'Novartis', 'BATCH004', 8.00, 450, '2026-01-20', '2028-06-20', 0, 'FAST'),
+    ('Metformin', 'Sun Pharma', 'BATCH005', 10.00, 600, '2026-04-10', '2028-10-10', 1, 'SLOW'),
+    ('Omeprazole', 'Dr. Reddy', 'BATCH006', 22.00, 300, '2026-02-01', '2027-12-01', 1, 'FAST'),
+    ('Aspirin', 'Bayer', 'BATCH007', 5.00, 800, '2026-01-05', '2029-01-05', 0, 'SLOW'),
+    ('Azithromycin', 'Cipla', 'BATCH008', 55.00, 150, '2026-03-12', '2027-09-12', 1, 'FAST'),
+    ('Vitamin C', 'GSK', 'BATCH009', 12.00, 400, '2026-05-01', '2028-05-01', 0, 'SLOW'),
+    ('Losartan', 'Torrent', 'BATCH010', 16.50, 350, '2026-04-15', '2028-11-15', 1, 'SLOW');
+GO
+
+
+SELECT staff_id, staff_name, role_, status_
+FROM dbo.staff;
+
+
+-- Default Bill
+-- Make sure the cashier_id values below exist in your staff table
+If NOT EXISTS (SELECT 1 FROM bills WHERE bill_id = 1)
+INSERT INTO bills (
+    cashier_id,
+    total_amount,
+    discount_amount,
+    net_total,
+    is_prescription_checked,
+    is_free_issue,
+    create_at
+)
+VALUES
+    -- Thu 2026-11-16: Cetirizine (4.50 x 20) + Vitamin C (12.00 x 10) = 210.00, disc 10.00 -> 200.00
+    ('C001', 210.00, 10.00, 200.00, 0, 0, '2026-11-16 09:15:00'),
+
+    -- Thu 2026-11-16: Ibuprofen (8.00 x 50) + Omeprazole (22.00 x 20) = 840.00, disc 40.00 -> 800.00
+    ('C001', 840.00, 40.00, 800.00, 1, 0, '2026-11-16 10:05:00'),
+
+    -- Thu 2026-11-17: Paracetamol (3.50 x 100) + Metformin (10.00 x 50) = 850.00, disc 0.00 -> 850.00
+    ('C001', 850.00, 0.00, 850.00, 1, 0, '2026-11-17 10:40:00'),
+
+    -- Thu 2026-11-17: Aspirin (5.00 x 10) = 50.00 free issue -> net 0.00
+    ('C001', 50.00, 50.00, 0.00, 0, 1, '2026-11-17 10:55:00'),
+
+    -- Thu 2026-11-18: Losartan (16.50 x 10) = 165.00, disc 115.00 -> net 50.00
+    ('O001', 165.00, 115.00, 50.00, 1, 0, '2026-11-18 11:05:00'),
+
+    -- Thu 2026-11-18: Cetirizine (4.50 x 20) + Vitamin C (12.00 x 10) = 210.00, disc 10.00 -> 200.00
+    ('C001', 210.00, 10.00, 200.00, 0, 0, '2026-11-18 09:15:50'),
+
+    -- Thu 2026-11-18: Ibuprofen (8.00 x 50) + Omeprazole (22.00 x 20) = 840.00, disc 40.00 -> 800.00
+    ('C001', 840.00, 40.00, 800.00, 1, 0, '2026-11-18 10:25:00'),
+
+    -- Thu 2026-11-19: Paracetamol (3.50 x 100) + Metformin (10.00 x 50) = 850.00, disc 0.00 -> 850.00
+    ('O001', 850.00, 0.00, 850.00, 1, 0, '2026-11-19 10:43:00'),
+
+    -- Thu 2026-11-19: Aspirin (5.00 x 10) = 50.00 free issue -> net 0.00
+    ('C001', 50.00, 50.00, 0.00, 0, 1, '2026-11-19 10:35:00'),
+
+    -- Thu 2026-11-19: Losartan (16.50 x 10) = 165.00, disc 115.00 -> net 50.00
+    ('C001', 165.00, 115.00, 50.00, 1, 0, '2026-11-19 11:45:00');
 GO
