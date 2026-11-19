@@ -1,13 +1,20 @@
 @echo off
+setlocal enabledelayedexpansion
 cd /d "%~dp0"
+
 if not exist bin mkdir bin
-dir /s /b src\*.java > sources.txt
-javac -encoding UTF-8 -cp "lib\*" -d bin @sources.txt
-if errorlevel 1 (
-  echo Compile failed.
-  pause
-  exit /b 1
+
+set "FILES="
+for /r src %%f in (*.java) do (
+    set "FILES=!FILES! "%%f""
 )
-del sources.txt
-java -cp "bin;lib\*" Main
+
+javac -cp "lib\flatlaf.jar;lib\mssql-jdbc.jar" -d bin !FILES!
+if %errorlevel% neq 0 (
+    echo Compile failed.
+    pause
+    exit /b 1
+)
+
+java -cp "bin;lib\flatlaf.jar;lib\mssql-jdbc.jar" Main
 pause
