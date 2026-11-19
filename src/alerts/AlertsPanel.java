@@ -275,3 +275,35 @@ public class AlertsPanel extends JPanel {
     public void loadAlertsTable() {
         refreshAlertsTable();
     }
+
+    
+    private void refreshAlertsTable() {
+        if (tableModel == null) return;
+
+        tableModel.setRowCount(0);
+        List<Notification> allAlerts = notificationManager.getAllAlerts();
+
+        if (lblAlertCountBadge != null) {
+            lblAlertCountBadge.setText(allAlerts.size() + " Active Alerts");
+        }
+
+        for (Notification n : allAlerts) {
+            String type = n.getType() != null ? n.getType() : "INFO";
+            String title = n.getTitle() != null ? n.getTitle() : "";
+            String message = n.getMessage() != null ? n.getMessage() : "";
+
+            boolean matches = true;
+            String upperType = type.toUpperCase();
+
+            if (currentFilter == FilterMode.EXPIRY) {
+                matches = upperType.contains("EXPIR");
+            } else if (currentFilter == FilterMode.LOW_STOCK) {
+                matches = upperType.contains("STOCK");
+            }
+
+            if (matches) {
+                tableModel.addRow(new Object[]{type, title, message});
+            }
+        }
+    }
+}
