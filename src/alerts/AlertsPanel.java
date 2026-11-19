@@ -163,3 +163,19 @@ public class AlertsPanel extends JPanel {
             ));
         }
     }
+
+    private void setFilter(FilterMode mode) {
+        this.currentFilter = mode;
+        styleFilterButton(btnFilterAll, mode == FilterMode.ALL);
+        styleFilterButton(btnFilterExpiry, mode == FilterMode.EXPIRY);
+        styleFilterButton(btnFilterStock, mode == FilterMode.LOW_STOCK);
+        loadAlertsTable();
+    }
+
+    // =========================================================================
+    // 2. Read-Only Alerts Table Card (STRICT RULE: Read-Only in RAM)
+    // =========================================================================
+
+    private JPanel buildTableCard() {
+        JPanel card = new JPanel(new BorderLayout(10, 10));
+        UIHelper.styleCardPanel(card);
