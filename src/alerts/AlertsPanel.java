@@ -56,3 +56,18 @@ public class AlertsPanel extends JPanel {
         registerLiveUpdates();
         refreshAlertsTable();
     }
+
+    
+    private void initComponents() {
+        setLayout(new BorderLayout(15, 15));
+        setBackground(Theme.MAIN_BG);
+        setBorder(BorderFactory.createEmptyBorder(20, 25, 20, 25));
+
+        // 1. Top Header & Summary
+        JPanel topSection = buildTopSection();
+        add(topSection, BorderLayout.NORTH);
+
+        // 2. Read-Only Alerts Table Card (STRICT RULE: No Delete/Dismiss/Clear/Edit buttons)
+        JPanel tableCard = buildTableCard();
+        add(tableCard, BorderLayout.CENTER);
+    }
