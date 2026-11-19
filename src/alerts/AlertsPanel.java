@@ -145,4 +145,32 @@ public class AlertsPanel extends JPanel {
         container.add(actionRow, BorderLayout.EAST);
         return container;
     }
-        
+ 
+
+    private void styleFilterButton(JButton btn, boolean isActive) {
+        btn.setFont(Theme.BOLD_BODY_FONT);
+        btn.setFocusPainted(false);
+        btn.setOpaque(true);
+        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+        if (isActive) {
+            btn.setBackground(Theme.PRIMARY_BTN);
+            btn.setForeground(Color.WHITE);
+            btn.setBorder(BorderFactory.createEmptyBorder(6, 15, 6, 15));
+        } else {
+            btn.setBackground(Color.WHITE);
+            btn.setForeground(Theme.TEXT_DARK);
+            btn.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Theme.BORDER_COLOR, 1),
+                BorderFactory.createEmptyBorder(6, 15, 6, 15)
+            ));
+        }
+    }
+
+    private void setFilter(FilterMode mode) {
+        this.currentFilter = mode;
+        styleFilterButton(btnFilterAll, mode == FilterMode.ALL);
+        styleFilterButton(btnFilterExpiry, mode == FilterMode.EXPIRY);
+        styleFilterButton(btnFilterStock, mode == FilterMode.LOW_STOCK);
+        loadAlertsTable();
+    }
