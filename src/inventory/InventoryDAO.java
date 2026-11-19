@@ -510,4 +510,20 @@ public class InventoryDAO extends BaseDAO implements Repository<Medicine, Intege
             }
         }
     }
+
+    //Get total count of medicines
+    public int getTotalMedicineCount() throws SQLException {
+        String sql = "SELECT COUNT(DISTINCT medicine_name) FROM inventory";
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+            if (rs.next()) {
+                int count = rs.getInt(1);
+                if (count > 0) {
+                    return count;
+                }
+            }
+        }
+        return getAllInventory().size();
+    }
 }

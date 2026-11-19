@@ -3,8 +3,6 @@ package models;
 
 
 //Declare Class and Encapsulated Variables
-
-//Declare Class and Encapsulated Variables
 public class StaffMember {
     
     private String staffId;      
@@ -31,7 +29,9 @@ public class StaffMember {
         this.status = status;
     }
 
-//Reading and Updating private fields
+
+    
+    //Reading and Updating private fields
     public String getStaffId() { 
         return staffId;
     }
@@ -78,5 +78,4 @@ public class StaffMember {
     public void setStatus(String status) { 
         this.status = status;
     }
-
 }

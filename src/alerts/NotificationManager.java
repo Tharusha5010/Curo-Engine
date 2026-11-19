@@ -29,6 +29,7 @@ public class NotificationManager {
     }
 
 
+    
     //Get the single instance safely
 
     @SuppressWarnings("DoubleCheckedLocking")
@@ -45,6 +46,7 @@ public class NotificationManager {
     }
 
 
+    
     //Add a UI screen to get live updates
     public void subscribe(Runnable listener) {
         if (listener != null && !listeners.contains(listener)) {
@@ -62,6 +64,7 @@ public class NotificationManager {
     }
 
 
+    
     //Add a new alert and update all screens
     public void addNotification(String type, String title, String message) {
         // Remove old alert if same type and title already exist
@@ -75,7 +78,6 @@ public class NotificationManager {
             }
         }
 
-        
         //Add newest alert to the top
         Notification newNotification = new Notification(type, title, message);
         notifications.add(0, newNotification);
@@ -99,6 +101,7 @@ public class NotificationManager {
     }
 
 
+    
     //Get total alert count
     public int getAlertCount() {
         return notifications.size();
@@ -114,6 +117,8 @@ public class NotificationManager {
         }
     }
 
+
+    
     //Remove one specific alert
     public void removeAlert(Notification target) {
         if (target != null && notifications.remove(target)) {
@@ -141,8 +146,8 @@ public class NotificationManager {
     }
 
 
+    
     //Expired or expiring alerts (Helper)
-    //new feature
     public void notifyExpiringSoon(String medicineName, String expDate, boolean isAlreadyExpired) {
         if (isAlreadyExpired) {
             addNotification("EXPIRED", medicineName, "Medicine expired on " + expDate + ". Do not issue!");
@@ -152,12 +157,13 @@ public class NotificationManager {
     }
 
 
+    
     //Canceled bill alerts (Helper)
     public void notifyBillCanceled(int billId, String reason) {
         addNotification("WARNING", "Bill #" + billId + " Canceled", "Reason: " + reason);
     }
 
-    // Helper for unauthorized access Alerts
+    // Helper for unauthorized access alerts
     public void notifyUnauthorizedAccess(String staffId, String actionName) {
         addNotification("SECURITY", "Unauthorized Access", "Staff [" + staffId + "] attempted: " + actionName);
     }
