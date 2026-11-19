@@ -243,3 +243,35 @@ public class AlertsPanel extends JPanel {
                 return c;
             }
         });
+
+        
+        JScrollPane scrollPane = new JScrollPane(tblAlerts);
+        scrollPane.setBorder(BorderFactory.createLineBorder(Theme.BORDER_COLOR, 1));
+        scrollPane.getViewport().setBackground(Theme.CARD_BG);
+        card.add(scrollPane, BorderLayout.CENTER);
+
+        return card;
+    }
+
+    // =========================================================================
+    // 3. Live Auto-Update Subscription & Loading Logic
+    // =========================================================================
+
+    private void registerLiveUpdates() {
+        notificationManager.subscribe(() -> SwingUtilities.invokeLater(this::loadAlertsTable));
+    }
+
+    /**
+     * Compatibility method for DashboardFrame tab navigation.
+     */
+    public void loadAlerts() {
+        loadAlertsTable();
+    }
+
+    /**
+     * Populates the read-only alerts table from NotificationManager.getInstance().getAllAlerts()
+     * filtered by current filter selection.
+     */
+    public void loadAlertsTable() {
+        refreshAlertsTable();
+    }
