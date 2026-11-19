@@ -69,3 +69,33 @@ public class AlertsPanel extends JPanel {
         JPanel tableCard = buildTableCard();
         add(tableCard, BorderLayout.CENTER);
     }
+
+
+    // =========================================================================
+    // 1. Header & Summary Section
+    // =========================================================================
+
+    private JPanel buildTopSection() {
+        JPanel container = new JPanel(new BorderLayout(0, 12));
+        container.setBackground(Theme.MAIN_BG);
+
+        // Header Title Box
+        JPanel titleBox = new JPanel();
+        titleBox.setLayout(new BoxLayout(titleBox, BoxLayout.Y_AXIS));
+        titleBox.setBackground(Theme.MAIN_BG);
+
+        JLabel lblTitle = UIHelper.createPageTitle("Smart Alerts (In-Memory Notifications)");
+        lblTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+
+        JLabel lblSub = new JLabel(
+            ""
+        );
+        lblSub.setFont(Theme.BODY_FONT);
+        lblSub.setForeground(Theme.TEXT_MUTED);
+        lblSub.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        titleBox.add(lblTitle);
+        titleBox.add(Box.createVerticalStrut(4));
+        titleBox.add(lblSub);
+        container.add(titleBox, BorderLayout.WEST);
