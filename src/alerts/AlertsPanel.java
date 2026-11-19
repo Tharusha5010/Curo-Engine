@@ -119,3 +119,30 @@ public class AlertsPanel extends JPanel {
         lblAlertCountBadge.setBackground(Theme.CARD_BG);
         actionRow.add(lblAlertCountBadge);
         actionRow.add(Box.createHorizontalStrut(8));
+
+
+        // Filter Buttons
+        btnFilterAll = new JButton("All Alerts");
+        btnFilterExpiry = new JButton("Expiry Warnings");
+        btnFilterStock = new JButton("Low Stock Alerts");
+        btnRefresh = new JButton("Refresh");
+
+        styleFilterButton(btnFilterAll, true);
+        styleFilterButton(btnFilterExpiry, false);
+        styleFilterButton(btnFilterStock, false);
+        UIHelper.styleSecondaryButton(btnRefresh);
+
+        btnFilterAll.addActionListener(e -> setFilter(FilterMode.ALL));
+        btnFilterExpiry.addActionListener(e -> setFilter(FilterMode.EXPIRY));
+        btnFilterStock.addActionListener(e -> setFilter(FilterMode.LOW_STOCK));
+        btnRefresh.addActionListener(e -> loadAlertsTable());
+
+        actionRow.add(btnFilterAll);
+        actionRow.add(btnFilterExpiry);
+        actionRow.add(btnFilterStock);
+        actionRow.add(btnRefresh);
+
+        container.add(actionRow, BorderLayout.EAST);
+        return container;
+    }
+        
