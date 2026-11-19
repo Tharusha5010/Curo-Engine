@@ -207,3 +207,39 @@ public class AlertsPanel extends JPanel {
                 return false; // Strictly read-only
             }
         };
+
+        
+        tblAlerts = new JTable(tableModel);
+        UIHelper.styleTable(tblAlerts);
+
+        // Column widths
+        tblAlerts.getColumnModel().getColumn(0).setPreferredWidth(160);
+        tblAlerts.getColumnModel().getColumn(1).setPreferredWidth(240);
+        tblAlerts.getColumnModel().getColumn(2).setPreferredWidth(520);
+
+        // Alert Type severity renderer
+        tblAlerts.getColumnModel().getColumn(0).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int col) {
+                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, col);
+                String val = (value != null) ? value.toString().toUpperCase() : "";
+
+                if (!isSelected) {
+                    if (val.contains("EXPIRED") || val.contains("OUT OF STOCK")) {
+                        setForeground(new Color(185, 28, 28));
+                        setFont(Theme.BOLD_BODY_FONT);
+                    } else if (val.contains("EXPIR") || val.contains("STOCK")) {
+                        setForeground(new Color(161, 72, 6)); // Amber
+                        setFont(Theme.BOLD_BODY_FONT);
+                    } else if (val.contains("SECURITY")) {
+                        setForeground(new Color(126, 34, 206)); // Purple
+                        setFont(Theme.BOLD_BODY_FONT);
+                    } else {
+                        setForeground(Theme.TEXT_DARK);
+                        setFont(Theme.BOLD_BODY_FONT);
+                    }
+                }
+                setHorizontalAlignment(SwingConstants.LEFT);
+                return c;
+            }
+        });
