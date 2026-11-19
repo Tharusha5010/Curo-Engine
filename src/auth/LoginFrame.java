@@ -44,7 +44,7 @@ public class LoginFrame extends JFrame {
         UIHelper.fitToScreen(this, 460, 540, 380, 440);
         setResizable(true);
 
-    // Root container styled with Theme.MAIN_BG
+        // Root container styled with Theme.MAIN_BG
         JPanel rootPanel = new JPanel(new GridBagLayout());
         rootPanel.setBackground(Theme.MAIN_BG);
 
@@ -155,4 +155,79 @@ public class LoginFrame extends JFrame {
         setContentPane(rootPanel);
         UIHelper.applyContrast(rootPanel);
     }
+
+    /**
+     * Handles the login action:
+     * 1. Validates inputs
+     * 2. Authenticates through UserDAO
+     * 3. Ensures UserSession is set
+     * 4. Generates startup inventory alerts
+     * 5. Navigates to DashboardFrame
+     */
+    private void handleLogin() {
+        String staffId = txtStaffId.getText().trim();
+        String password = new String(txtPassword.getPassword());
+
+        // Validate that fields are not empty
+        if (staffId.isEmpty() || password.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Staff ID and Password cannot be empty.",
+                "Validation Error",
+                JOptionPane.WARNING_MESSAGE
+            );
+            if (staffId.isEmpty()) {
+                txtStaffId.requestFocusInWindow();
+            } else {
+                txtPassword.requestFocusInWindow();
+            }
+            return;
+        }
+
+        try {
+            // Attempt user authentication
+            StaffMember user = new UserDAO().loginUser(staffId, password);
+
+            // 1. Ensure UserSession.setCurrentUser(user) is set (check UserDAO if already set, set it if null)
+            if (UserSession.getCurrentUser() == null) {
+                UserSession.setCurrentUser(user);
+            }
+
+            // 2. Populate RAM alerts on startup
+            new InventoryDAO().checkAndGenerateStartupAlerts();
+
+            // 3. Open DashboardFrame and dispose LoginFrame
+            new DashboardFrame().setVisible(true);
+            this.dispose();
+
+        } catch (InvalidStaffIdException ex) {
+            JOptionPane.showMessageDialog(
+                this,
+                ex.getMessage(),
+                "Authentication Failed",
+                JOptionPane.ERROR_MESSAGE
+            );
+        } catch (SQLException ex) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Database error: " + ex.getMessage(),
+                "Database Error",
+                JOptionPane.ERROR_MESSAGE
+            );
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(
+                this,
+                "An unexpected error occurred: " + ex.getMessage(),
+                "Error",
+                JOptionPane.ERROR_MESSAGE
+            );
+        }
     }
+
+    public static void main(String[] args) {
+        ui.Theme.installLookAndFeel();
+        SwingUtilities.invokeLater(() -> {
+            new LoginFrame().setVisible(true);
+        });
+    }
+}
