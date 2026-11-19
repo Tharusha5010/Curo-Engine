@@ -1,10 +1,5 @@
 package ui;
 
-public class FitScrollPane {
-    
-}
-package ui;
-
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.Rectangle;
@@ -68,7 +63,7 @@ public class FitScrollPanel extends JScrollPane {
         }
     }
 
-    public FitScrollPane(JComponent content) {
+    public FitScrollPanel(JComponent content) {
         super(new View(content));
         Border none = javax.swing.BorderFactory.createEmptyBorder();
         setBorder(none);
