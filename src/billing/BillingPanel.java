@@ -53,8 +53,9 @@ import ui.UIHelper;
 
 /**
  * BillingPanel provides an interactive Point of Sale (POS) interface for dispensing medicines.
- * Features smart auto-suggest medicine search, FEFO batch selection, single-choice discount calculation,
- * dual-path checkout (Normal vs. Free Issue), prescription verification rules, and thermal receipt printing.
+ * Features smart auto-suggest medicine search, real-time cart-aware FEFO stock & multi-batch pricing,
+ * single-choice discount calculation, dual-path checkout (Normal vs. Free Issue),
+ * prescription verification rules, and thermal receipt printing.
  */
 public class BillingPanel extends JPanel {
 
@@ -78,6 +79,9 @@ public class BillingPanel extends JPanel {
 
     // Active Selected Medicine & Available Stock
     private Medicine currentSelectedMedicine = null;
+    private String currentSelectedMedicineName = null;
+    private List<Medicine> currentMedicineBatches = new ArrayList<>();
+    private int currentTotalDbStock = 0;
     private int currentAvailableStock = 0;
 
     // Cart Input Components
@@ -147,7 +151,6 @@ public class BillingPanel extends JPanel {
 
         JLabel lblTitle = UIHelper.createPageTitle("Billing & Point of Sale (POS)");
         lblTitle.setAlignmentX(LEFT_ALIGNMENT);
-
 
         JLabel lblSub = new JLabel("");
         lblSub.setFont(Theme.BODY_FONT);
@@ -408,35 +411,25 @@ public class BillingPanel extends JPanel {
     private void applySelectedMedicine(String medicineName) {
         if (medicineName == null || medicineName.trim().isEmpty()) return;
 
+        String cleanName = medicineName.trim();
         isSelectingSuggestion = true;
-        txtSearch.setText(medicineName.trim());
+        txtSearch.setText(cleanName);
         suggestionPopup.setVisible(false);
         isSelectingSuggestion = false;
 
         try {
-            List<Medicine> batches = inventoryDAO.getBatchesByMedicineNameFEFO(medicineName.trim());
+            List<Medicine> batches = inventoryDAO.getBatchesByMedicineNameFEFO(cleanName);
             if (batches != null && !batches.isEmpty()) {
-                Medicine earliest = batches.get(0);
-                currentSelectedMedicine = earliest;
+                currentSelectedMedicineName = cleanName;
+                currentMedicineBatches = batches;
 
                 int totalStock = 0;
                 for (Medicine m : batches) {
                     totalStock += m.getStockQuantity();
                 }
-                currentAvailableStock = totalStock;
+                currentTotalDbStock = totalStock;
 
-                lblBatchNo.setText(earliest.getBatchNumber());
-                lblStock.setText(totalStock + " units (" + earliest.getStockQuantity() + " in batch)");
-                lblUnitPrice.setText(String.format("LKR %.2f", earliest.getUnitPrice()));
-                lblExpiryDate.setText(earliest.getExpDate() != null ? earliest.getExpDate().toString() : "N/A");
-
-                if (earliest.isRequiresPrescription()) {
-                    lblRxStatus.setText("Yes (Prescription Required)");
-                    lblRxStatus.setForeground(Theme.DANGER_BTN);
-                } else {
-                    lblRxStatus.setText("No (OTC Medicine)");
-                    lblRxStatus.setForeground(new Color(22, 101, 52));
-                }
+                refreshSelectedMedicineTelemetry();
 
                 txtQuantity.requestFocusInWindow();
                 txtQuantity.selectAll();
@@ -448,8 +441,76 @@ public class BillingPanel extends JPanel {
         }
     }
 
+    private int getCartQuantityForMedicine(String medicineName) {
+        if (medicineName == null) return 0;
+        int qtyInCart = 0;
+        for (CartEntry entry : cartItems) {
+            if (entry.getMedicineName().equalsIgnoreCase(medicineName.trim())) {
+                qtyInCart += entry.getQuantity();
+            }
+        }
+        return qtyInCart;
+    }
+
+    /**
+     * Updates displayed Batch, Available Stock, Unit Price, and Expiry Date
+     * taking into account quantities already placed in the current cart (FEFO).
+     */
+    private void refreshSelectedMedicineTelemetry() {
+        if (currentMedicineBatches == null || currentMedicineBatches.isEmpty() || currentSelectedMedicineName == null) {
+            return;
+        }
+
+        int alreadyInCart = getCartQuantityForMedicine(currentSelectedMedicineName);
+        int remainingAvailable = Math.max(0, currentTotalDbStock - alreadyInCart);
+        currentAvailableStock = remainingAvailable;
+
+        // Find the next active batch after accounting for alreadyInCart
+        int remainingToSkip = alreadyInCart;
+        Medicine activeBatch = null;
+        int remainingInActiveBatch = 0;
+
+        for (Medicine batch : currentMedicineBatches) {
+            int batchStock = batch.getStockQuantity();
+            if (remainingToSkip >= batchStock) {
+                remainingToSkip -= batchStock;
+            } else {
+                activeBatch = batch;
+                remainingInActiveBatch = batchStock - remainingToSkip;
+                break;
+            }
+        }
+
+        if (activeBatch == null) {
+            activeBatch = currentMedicineBatches.get(0);
+            remainingInActiveBatch = 0;
+        }
+
+        currentSelectedMedicine = activeBatch;
+
+        lblBatchNo.setText(activeBatch.getBatchNumber());
+        if (alreadyInCart > 0) {
+            lblStock.setText(remainingAvailable + " units avail (" + remainingInActiveBatch + " in batch, " + alreadyInCart + " in cart)");
+        } else {
+            lblStock.setText(remainingAvailable + " units (" + remainingInActiveBatch + " in batch)");
+        }
+        lblUnitPrice.setText(String.format("LKR %.2f", activeBatch.getUnitPrice()));
+        lblExpiryDate.setText(activeBatch.getExpDate() != null ? activeBatch.getExpDate().toString() : "N/A");
+
+        if (activeBatch.isRequiresPrescription()) {
+            lblRxStatus.setText("Yes (Prescription Required)");
+            lblRxStatus.setForeground(Theme.DANGER_BTN);
+        } else {
+            lblRxStatus.setText("No (OTC Medicine)");
+            lblRxStatus.setForeground(new Color(22, 101, 52));
+        }
+    }
+
     private void clearMedicineDetails(String statusMessage) {
         currentSelectedMedicine = null;
+        currentSelectedMedicineName = null;
+        currentMedicineBatches = new ArrayList<>();
+        currentTotalDbStock = 0;
         currentAvailableStock = 0;
         lblBatchNo.setText("-");
         lblStock.setText(statusMessage);
@@ -516,7 +577,7 @@ public class BillingPanel extends JPanel {
     }
 
     private void addItemToCart() {
-        if (currentSelectedMedicine == null) {
+        if (currentSelectedMedicine == null || currentMedicineBatches == null || currentMedicineBatches.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Please select an available medicine first.", "No Medicine Selected", JOptionPane.WARNING_MESSAGE);
             txtSearch.requestFocusInWindow();
             return;
@@ -532,18 +593,13 @@ public class BillingPanel extends JPanel {
             return;
         }
 
-        // Check stock limitation
-        int alreadyInCart = 0;
-        for (CartEntry entry : cartItems) {
-            if (entry.getMedicineName().equalsIgnoreCase(currentSelectedMedicine.getMedicineName())) {
-                alreadyInCart += entry.getQuantity();
-            }
-        }
+        int alreadyInCart = getCartQuantityForMedicine(currentSelectedMedicineName);
+        int realTimeAvailable = Math.max(0, currentTotalDbStock - alreadyInCart);
 
-        if (alreadyInCart + qty > currentAvailableStock) {
+        if (qty > realTimeAvailable) {
             JOptionPane.showMessageDialog(
                 this,
-                "Requested quantity (" + (alreadyInCart + qty) + ") exceeds total available stock (" + currentAvailableStock + ").",
+                "Requested quantity (" + qty + ") exceeds available stock (" + realTimeAvailable + " remaining; " + alreadyInCart + " already in cart).",
                 "Insufficient Stock",
                 JOptionPane.WARNING_MESSAGE
             );
@@ -551,46 +607,66 @@ public class BillingPanel extends JPanel {
             return;
         }
 
-        // Check if same medicine & batch already in cart -> increment quantity
-        boolean existingFound = false;
+        // Allocate requested quantity across FEFO batches, skipping units already in cart
+        int skipRemaining = alreadyInCart;
+        int qtyToAllocate = qty;
+
+        for (Medicine batch : currentMedicineBatches) {
+            if (qtyToAllocate <= 0) break;
+
+            int batchStock = batch.getStockQuantity();
+            if (skipRemaining >= batchStock) {
+                skipRemaining -= batchStock;
+                continue;
+            }
+
+            int usableInBatch = batchStock - skipRemaining;
+            skipRemaining = 0;
+
+            int takeFromBatch = Math.min(usableInBatch, qtyToAllocate);
+            if (takeFromBatch <= 0) continue;
+
+            addOrIncrementCartEntry(batch, takeFromBatch);
+            qtyToAllocate -= takeFromBatch;
+        }
+
+        // Refresh telemetry immediately so Available Stock reflects newly added cart items
+        refreshSelectedMedicineTelemetry();
+        txtQuantity.setText("1");
+        txtQuantity.requestFocusInWindow();
+        txtQuantity.selectAll();
+
+        calculateTotals();
+    }
+
+    private void addOrIncrementCartEntry(Medicine batch, int qtyToAdd) {
         for (int i = 0; i < cartItems.size(); i++) {
             CartEntry entry = cartItems.get(i);
-            if (entry.getMedicineId() == currentSelectedMedicine.getMedicineId()
-                    && entry.getBatchNumber().equalsIgnoreCase(currentSelectedMedicine.getBatchNumber())) {
-                entry.setQuantity(entry.getQuantity() + qty);
+            if (entry.getMedicineId() == batch.getMedicineId()
+                    && entry.getBatchNumber().equalsIgnoreCase(batch.getBatchNumber())) {
+                entry.setQuantity(entry.getQuantity() + qtyToAdd);
                 cartTableModel.setValueAt(entry.getQuantity(), i, 3);
                 cartTableModel.setValueAt(String.format("%.2f", entry.getLineTotal()), i, 4);
-                existingFound = true;
-                break;
+                return;
             }
         }
 
-        if (!existingFound) {
-            CartEntry newEntry = new CartEntry(
-                currentSelectedMedicine.getMedicineId(),
-                currentSelectedMedicine.getMedicineName(),
-                currentSelectedMedicine.getBatchNumber(),
-                currentSelectedMedicine.getUnitPrice(),
-                qty,
-                currentSelectedMedicine.isRequiresPrescription()
-            );
-            cartItems.add(newEntry);
-            cartTableModel.addRow(new Object[]{
-                newEntry.getMedicineName(),
-                newEntry.getBatchNumber(),
-                String.format("%.2f", newEntry.getUnitPrice()),
-                newEntry.getQuantity(),
-                String.format("%.2f", newEntry.getLineTotal())
-            });
-        }
-
-        // Reset inputs for next medicine
-        txtSearch.setText("");
-        clearMedicineDetails("-");
-        txtQuantity.setText("1");
-        txtSearch.requestFocusInWindow();
-
-        calculateTotals();
+        CartEntry newEntry = new CartEntry(
+            batch.getMedicineId(),
+            batch.getMedicineName(),
+            batch.getBatchNumber(),
+            batch.getUnitPrice(),
+            qtyToAdd,
+            batch.isRequiresPrescription()
+        );
+        cartItems.add(newEntry);
+        cartTableModel.addRow(new Object[]{
+            newEntry.getMedicineName(),
+            newEntry.getBatchNumber(),
+            String.format("%.2f", newEntry.getUnitPrice()),
+            newEntry.getQuantity(),
+            String.format("%.2f", newEntry.getLineTotal())
+        });
     }
 
     private void removeSelectedCartItem() {
@@ -602,12 +678,14 @@ public class BillingPanel extends JPanel {
 
         cartItems.remove(selectedRow);
         cartTableModel.removeRow(selectedRow);
+        refreshSelectedMedicineTelemetry();
         calculateTotals();
     }
 
     private void clearCart() {
         cartItems.clear();
         cartTableModel.setRowCount(0);
+        refreshSelectedMedicineTelemetry();
         calculateTotals();
     }
 
@@ -955,8 +1033,9 @@ public class BillingPanel extends JPanel {
      * Interface compatibility method for DashboardFrame navigation refresh.
      */
     public void loadAvailableMedicines() {
-        // Clear any stale selection in form
-        if (currentSelectedMedicine == null) {
+        if (currentSelectedMedicineName != null && !currentSelectedMedicineName.trim().isEmpty()) {
+            applySelectedMedicine(currentSelectedMedicineName);
+        } else {
             clearMedicineDetails("-");
         }
     }
