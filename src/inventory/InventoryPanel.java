@@ -68,6 +68,7 @@ public class InventoryPanel extends JPanel {
     private JButton btnSearch;
     private JButton btnRefresh;
     private JButton btnToggleMovingType;
+    private JButton btnToggleRx;
     private JButton btnUpdateStock;
     private JButton btnDeleteBatch;
 
@@ -207,6 +208,12 @@ public class InventoryPanel extends JPanel {
         UIHelper.styleSecondaryButton(btnToggleMovingType);
         btnToggleMovingType.addActionListener(e -> toggleMovingType());
         actionRow.add(btnToggleMovingType);
+
+        // Toggle Prescription Requirement (Owner Only)
+        btnToggleRx = new JButton("Toggle Rx (Yes / No)");
+        UIHelper.styleSecondaryButton(btnToggleRx);
+        btnToggleRx.addActionListener(e -> togglePrescriptionRequirement());
+        actionRow.add(btnToggleRx);
 
         // Owner: set the exact stock quantity of ONE selected batch
         btnUpdateStock = new JButton("Update Stock Qty");
@@ -718,8 +725,8 @@ public class InventoryPanel extends JPanel {
                    .append(" existing batch(es) will be changed to ").append(movingType).append(".\n");
             }
             if (rxDiffers) {
-                msg.append("- Prescription requirement differs from the existing batches. This version cannot change it for\n")
-                   .append("  the existing batches (the backend has no update method for it), so only the new entry uses it.\n");
+                msg.append("- Prescription requirement of ALL ").append(sameMedicine.size())
+                   .append(" existing batch(es) will be changed to ").append(requiresRx ? "Yes" : "No").append(".\n");
             }
             msg.append("\nContinue?");
             int choice = JOptionPane.showConfirmDialog(this, msg.toString(), "Medicine Already Exists",
@@ -738,6 +745,8 @@ public class InventoryPanel extends JPanel {
         // 5. Save: restock the same batch OR insert a new batch, then sync the moving type
         final Medicine existingBatch = sameBatch;
         final boolean syncMoving = movingDiffers;
+        final boolean syncRx = rxDiffers;
+        final boolean rxFinal = requiresRx;
         final int addQty = stockQty;
         final String movingFinal = (movingType != null) ? movingType : "SLOW";
         final Medicine med = new Medicine(
@@ -776,6 +785,11 @@ public class InventoryPanel extends JPanel {
                     inventoryDAO.updateMovingType(finalName, movingFinal);
                     sb.append("\nMoving type of all batches of '").append(finalName).append("' set to ")
                       .append(movingFinal).append(".");
+                }
+                if (syncRx) {
+                    inventoryDAO.updatePrescriptionRequirement(finalName, rxFinal);
+                    sb.append("\nPrescription requirement of all batches of '").append(finalName).append("' set to ")
+                      .append(rxFinal ? "Yes" : "No").append(".");
                 }
                 return sb.toString();
             });
@@ -862,6 +876,74 @@ public class InventoryPanel extends JPanel {
             JOptionPane.showMessageDialog(
                 this,
                 "Failed to update moving type: " + ex.getMessage(),
+                "Database Error",
+                JOptionPane.ERROR_MESSAGE
+            );
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Error: " + ex.getMessage(),
+                "Error",
+                JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }
+
+    // =========================================================================
+    // 4B. Manual Prescription Requirement Toggle (Owner Only)
+    // =========================================================================
+
+    private void togglePrescriptionRequirement() {
+        int selectedRow = tblInventory.getSelectedRow();
+        if (selectedRow < 0) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Please select an inventory batch row from the table to toggle its prescription requirement.",
+                "No Selection",
+                JOptionPane.INFORMATION_MESSAGE
+            );
+            return;
+        }
+
+        int medId = (int) tableModel.getValueAt(selectedRow, 0);
+        String medName = String.valueOf(tableModel.getValueAt(selectedRow, 1));
+        String currentRxStr = String.valueOf(tableModel.getValueAt(selectedRow, 8));
+        boolean newRx = !"Yes".equalsIgnoreCase(currentRxStr);
+
+        StaffMember owner = OwnerAccess.requestOwner(this, "Changing the prescription requirement is an Owner-only function.");
+        if (owner == null) {
+            return;
+        }
+
+        try {
+            boolean success = OwnerAccess.callAs(owner, () -> inventoryDAO.updatePrescriptionRequirement(medName, newRx));
+            if (success) {
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Prescription requirement for all batches of '" + medName + "' updated to: " + (newRx ? "Yes" : "No"),
+                    "Prescription Requirement Updated",
+                    JOptionPane.INFORMATION_MESSAGE
+                );
+                loadInventoryData();
+                // Reselect updated row
+                for (int i = 0; i < tblInventory.getRowCount(); i++) {
+                    if ((int) tblInventory.getValueAt(i, 0) == medId) {
+                        tblInventory.setRowSelectionInterval(i, i);
+                        break;
+                    }
+                }
+            }
+        } catch (UnauthorizedAccessException ex) {
+            JOptionPane.showMessageDialog(
+                this,
+                ex.getMessage(),
+                "Access Denied - Owner Privileges Required",
+                JOptionPane.WARNING_MESSAGE
+            );
+        } catch (SQLException ex) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Failed to update prescription requirement: " + ex.getMessage(),
                 "Database Error",
                 JOptionPane.ERROR_MESSAGE
             );
