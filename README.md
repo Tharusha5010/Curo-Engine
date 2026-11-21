@@ -206,4 +206,4 @@ db.password=ict25954
 ### 📄 Printable User Guide (English)
 For pharmacy staff and owners, a printable **User Manual** (covering daily POS operations, FEFO rules, 7-month expiry re-export workflow, and weekly database backups) is included in this repository:
 
-👉 **[📖 View / Download Printable User Guide (PDF)](curo_engine_user_guide.pdf)**
+👉 **[📖 View / Download Printable User Guide (PDF)](Curo Engine User Guide.pdf)**
