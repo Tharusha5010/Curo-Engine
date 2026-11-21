@@ -1,4 +1,4 @@
-# 💊 Curo — Pharmacy Loss-Prevention & Compliance Engine
+# 💊 Curo — Pharmacy Loss-Prevention Engine
 
 A modern **Java Swing (GUI)** desktop application engineered for proactive pharmacy loss prevention, regulatory prescription compliance, automated multi-batch FEFO billing, and real-time in-memory operational intelligence backed by a **Microsoft SQL Server (MSSQL)** database.
 
