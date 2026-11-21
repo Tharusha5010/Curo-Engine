@@ -1,4 +1,4 @@
-# 💊 Curo — Pharmacy Loss-Prevention Engine
+# 💊 Curo — Pharmacy Loss-Prevention & Compliance Engine
 
 A modern **Java Swing (GUI)** desktop application engineered for proactive pharmacy loss prevention, regulatory prescription compliance, automated multi-batch FEFO billing, and real-time in-memory operational intelligence backed by a **Microsoft SQL Server (MSSQL)** database.
 
@@ -16,6 +16,20 @@ The **Curo Engine** (*Curo Smart Pharmacy Management System*) transforms traditi
 - **Wimansha Wijesinghe** — `ICT/25/956` — *FEFO Billing, POS Operations & Receipt Generation Module*
 - **Sachintha Dilsara** — `ICT/25/860` — *Bill Cancellations, Custom Exceptions & Smart Notification Alerts Module*
 - **Maleesha Senura** — `ICT/25/936` — *Staff Management & Role-Based Authentication Module*
+
+---
+
+## 📸 System Screenshots
+
+> *(Add your UI screenshots inside a `screenshots/` folder in the repository root using the filenames below to display them automatically on GitHub)*
+
+| Login & Authentication | Main Dashboard Overview |
+| :---: | :---: |
+| ![Login Screen](screenshots/login.png) | ![Dashboard](screenshots/dashboard.png) |
+
+| FEFO Billing (POS) & Thermal Receipt | Batch-Wise Inventory & Smart Alerts |
+| :---: | :---: |
+| ![Billing POS](screenshots/billing.png) | ![Inventory & Alerts](screenshots/inventory.png) |
 
 ---
 
@@ -49,13 +63,36 @@ The **Curo Engine** (*Curo Smart Pharmacy Management System*) transforms traditi
 
 ---
 
+## 🗄️ Database Schema Overview (`curo_db`)
+
+| Table Name | Primary Key | Foreign Keys | Description |
+| :--- | :--- | :--- | :--- |
+| **`staff`** | `staff_id` | — | Stores Owner and Cashier login credentials, roles (`OWNER`/`CASHIER`), and account status (`ACTIVE`/`INACTIVE`). |
+| **`inventory`** | `medicine_id` | — | Stores batch-wise medicine records (`batch_number`, `unit_price`, `stock_quantity`, `exp_date`, `requires_prescription`, `moving_type`). |
+| **`bills`** | `bill_id` | `staff_id` → `staff` | Stores bill headers, timestamps, net totals, billing type (`NORMAL`/`FREE_ISSUE`), and discount reasons. |
+| **`bill_item`** | `item_id` | `bill_id` → `bills`<br>`medicine_id` → `inventory` | Stores line-item quantities, batch deductions, and `is_prescription_checked` audit flags. |
+| **`canceled_bills`** | `cancel_id` | `bill_id` → `bills`<br>`canceled_by` → `staff` | Logs Owner-authorized bill cancellations, timestamps, and mandatory cancellation reasons. |
+
+---
+
+## ⚠️ Custom Exceptions & Business Rules
+
+| Exception Class | Trigger Condition | System Action |
+| :--- | :--- | :--- |
+| **`ExpiredMedicineException`** | Attempting to bill a batch where `exp_date <= TODAY`. | Blocks sale, rolls back SQL transaction, and alerts cashier to remove batch. |
+| **`OutOfStockException`** | Requested billing quantity exceeds total valid non-expired stock across all batches. | Halts billing safely without partial deductions and displays available stock. |
+| **`UnauthorizedAccessException`** | A `CASHIER` attempts Owner-restricted operations (Staff, Cancel Bill, Free Issue, Prescription Override, Delete/Update Stock). | Denies action and prompts for temporary Owner password elevation (`OwnerAccess`). |
+| **`InvalidStaffIdException`** | Invalid credentials, inactive staff account login, or duplicate `staff_id` during registration. | Prevents authentication/registration and displays a validation error dialog. |
+
+---
+
 ## 🛠️ System Architecture & Tech Stack
 
 - **User Interface:** Java Swing (GUI) with FlatLaf Modern Look & Feel (`flatlaf.jar`)
-- **Programming Language:** Java (JDK 17+)
+- **Programming Language:** Java (JDK 17+).
 - **Database Management System:** Microsoft SQL Server Express Edition (MSSQL)
 - **JDBC Driver:** Microsoft JDBC Driver for SQL Server (`mssql-jdbc.jar`)
-- **Version Control:** Git & GitHub
+- **Version Control:** Git & GitHub.
 
 ---
 
@@ -66,6 +103,11 @@ curo-pharmacy-system/
 ├── lib/
 │   ├── flatlaf.jar
 │   └── mssql-jdbc.jar
+├── screenshots/
+│   ├── login.png
+│   ├── dashboard.png
+│   ├── billing.png
+│   └── inventory.png
 ├── src/
 │   ├── Main.java
 │   ├── alerts/
