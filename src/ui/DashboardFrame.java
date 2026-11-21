@@ -399,7 +399,7 @@ public class DashboardFrame extends JFrame {
             @Override
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
-                    openInSeparateWindow(title, cardName, requiresOwner);
+                   // openInSeparateWindow(title, cardName, requiresOwner);
                 }
             }
         });
