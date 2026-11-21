@@ -69,6 +69,8 @@ public class InventoryPanel extends JPanel {
     private JButton btnRefresh;
     private JButton btnToggleMovingType;
     private JButton btnUpdateStock;
+    private JButton btnDeleteBatch;
+
 
     // 2. Inventory Stock Table Components
     private JTable tblInventory;
@@ -211,6 +213,12 @@ public class InventoryPanel extends JPanel {
         UIHelper.styleSecondaryButton(btnUpdateStock);
         btnUpdateStock.addActionListener(e -> updateSelectedBatchStock());
         actionRow.add(btnUpdateStock);
+
+        // Owner: delete a selected batch (if not linked to past bills)
+        btnDeleteBatch = new JButton("Delete Batch");
+        UIHelper.styleDangerButton(btnDeleteBatch);
+        btnDeleteBatch.addActionListener(e -> deleteSelectedBatch());
+        actionRow.add(btnDeleteBatch);
 
         container.add(actionRow, BorderLayout.SOUTH);
         return container;
@@ -960,6 +968,72 @@ public class InventoryPanel extends JPanel {
             JOptionPane.showMessageDialog(this, "Database error: " + ex.getMessage(), "Database Error", JOptionPane.ERROR_MESSAGE);
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    // =========================================================================
+    // 6. Delete Selected Batch (Owner Only)
+    // =========================================================================
+
+    private void deleteSelectedBatch() {
+        int row = tblInventory.getSelectedRow();
+        if (row < 0) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Please select the batch row in the table that you want to delete.",
+                "No Selection",
+                JOptionPane.INFORMATION_MESSAGE
+            );
+            return;
+        }
+
+        int medId = (int) tableModel.getValueAt(row, 0);
+        String medName = String.valueOf(tableModel.getValueAt(row, 1));
+        String batchNo = String.valueOf(tableModel.getValueAt(row, 3));
+
+        int confirm = JOptionPane.showConfirmDialog(
+            this,
+            "Are you sure you want to permanently delete batch [" + batchNo + "] of '" + medName + "'?\n"
+            + "(Note: Batches already linked to past sales bills cannot be deleted.)",
+            "Confirm Batch Deletion",
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.WARNING_MESSAGE
+        );
+
+        if (confirm != JOptionPane.YES_OPTION) {
+            return;
+        }
+
+        StaffMember owner = OwnerAccess.requestOwner(this, "Deleting an inventory batch is an Owner-only function.");
+        if (owner == null) {
+            return;
+        }
+
+        try {
+            boolean deleted = OwnerAccess.callAs(owner, () -> inventoryDAO.deleteMedicineBatch(medId));
+            if (deleted) {
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Batch [" + batchNo + "] of '" + medName + "' was deleted successfully.",
+                    "Batch Deleted",
+                    JOptionPane.INFORMATION_MESSAGE
+                );
+                loadInventoryData();
+            } else {
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Batch could not be deleted. It may have already been removed.",
+                    "Not Deleted",
+                    JOptionPane.WARNING_MESSAGE
+                );
+            }
+        } catch (UnauthorizedAccessException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Access Denied - Owner Only", JOptionPane.WARNING_MESSAGE);
+        } catch (SQLException ex) {
+            // Displays the friendly DAO message if linked to past bills (ErrorCode 547)
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Cannot Delete Batch", JOptionPane.ERROR_MESSAGE);
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "Error deleting batch: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 }
