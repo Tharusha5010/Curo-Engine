@@ -25,11 +25,11 @@ The **Curo Engine** (*Curo Smart Pharmacy Management System*) transforms traditi
 
 | Login & Authentication | Main Dashboard Overview |
 | :---: | :---: |
-| ![Login Screen](login.jpg) | ![Dashboard](dashboard.jpg) |
+| ![Login Screen](screenshot/login.jpg) | ![Dashboard](screenshot/dashboard.jpg) |
 
 | FEFO Billing (POS) & Thermal Receipt | Batch-Wise Inventory & Smart Alerts |
 | :---: | :---: |
-| ![Billing POS](pos.jpg) | ![Inventory & Alerts](inventory.jpg) |
+| ![Billing POS](screenshot/pos.jpg) | ![Inventory & Alerts](screenshot/inventory.jpg) |
 
 ---
 
