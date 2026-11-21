@@ -104,6 +104,8 @@ public class InventoryDAO extends BaseDAO implements Repository<Medicine, Intege
                      "stock_quantity, stock_date, exp_date, requires_prescription, moving_type) " +
                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
+        boolean inserted = false;
+
         try (Connection conn = getValidConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
@@ -117,17 +119,26 @@ public class InventoryDAO extends BaseDAO implements Repository<Medicine, Intege
             pstmt.setBoolean(8, med.isRequiresPrescription());
             pstmt.setString(9, movingType);
 
-            boolean inserted = pstmt.executeUpdate() > 0;
+            inserted = pstmt.executeUpdate() > 0;
 
             //Send expiry and stock alerts after adding
             if (inserted) {
+                // Sync prescription requirement across ALL existing batches of this medicine name
+                String syncRxSql = "UPDATE inventory SET requires_prescription = ? WHERE medicine_name = ?";
+                try (PreparedStatement syncStmt = conn.prepareStatement(syncRxSql)) {
+                    syncStmt.setBoolean(1, med.isRequiresPrescription());
+                    syncStmt.setString(2, med.getMedicineName().trim());
+                    syncStmt.executeUpdate();
+                }
+
                 med.setMovingType(movingType);
                 evaluateBatchExpiryAlert(med);
                 evaluateTotalStockAlert(med.getMedicineName().trim(), movingType);
             }
+            }
             return inserted;
         }
-    }
+    
 
     
 
@@ -289,6 +300,39 @@ public class InventoryDAO extends BaseDAO implements Repository<Medicine, Intege
         Medicine med = getMedicineById(medicineId);
         if (med != null) {
             return updateMovingType(med.getMedicineName(), movingType);
+        }
+        return false;
+    }
+
+
+
+    //Change prescription requirement (Yes/No) for all batches of a medicine by name (Owner only)
+    public boolean updatePrescriptionRequirement(String medicineName, boolean requiresPrescription) throws SQLException, UnauthorizedAccessException {
+        verifyOwnerAccess();
+
+        if (medicineName == null || medicineName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Medicine name cannot be empty.");
+        }
+
+        String sql = "UPDATE inventory SET requires_prescription = ? WHERE medicine_name = ?";
+
+        try (Connection conn = getValidConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setBoolean(1, requiresPrescription);
+            pstmt.setString(2, medicineName.trim());
+
+            return pstmt.executeUpdate() > 0;
+        }
+    }
+
+
+
+    //Change prescription requirement (Yes/No) by ID (Owner only)
+    public boolean updatePrescriptionRequirement(int medicineId, boolean requiresPrescription) throws SQLException, UnauthorizedAccessException {
+        Medicine med = getMedicineById(medicineId);
+        if (med != null) {
+            return updatePrescriptionRequirement(med.getMedicineName(), requiresPrescription);
         }
         return false;
     }
