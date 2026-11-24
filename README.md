@@ -223,4 +223,4 @@ db.password=YOUR_PASSWORD
 ### 📄 Printable User Guide
 For pharmacy staff and owners, a printable **User Manual** (covering daily POS operations, FEFO rules, 7-month expiry re-export workflow, and weekly database backups) is included in this repository:
 
-👉 **[📖 View / Download Printable User Guide (PDF)](curo_pharmacy_user_guide_a6.pdf)**
+👉 **[📖 View / Download Printable User Guide (PDF)](curo_pharmacy_user_guide.pdf)**
