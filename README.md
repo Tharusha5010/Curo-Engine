@@ -24,8 +24,7 @@ The **Curo Engine** (*Curo Smart Pharmacy Management System*) transforms traditi
 
 > *(Place your architecture diagram and UI screenshots inside the `screenshots/` folder in the repository root using the filenames below so they render automatically on GitHub)*
 
-| :---: | 
-| ![3-Tier Architecture](screenshot/architecture.jpg) | 
+![3-Tier Architecture](screenshot/architecture.jpg) 
 
 
   
