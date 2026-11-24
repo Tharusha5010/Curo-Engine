@@ -1,4 +1,4 @@
-# 💊 Curo — Pharmacy Loss-Prevention & Compliance Engine
+# 💊 Curo — Pharmacy Loss-Prevention Engine
 
 A modern **Java Swing (GUI)** desktop application engineered for proactive pharmacy loss prevention, regulatory prescription compliance, automated multi-batch FEFO billing, and real-time in-memory operational intelligence backed by a **Microsoft SQL Server (MSSQL)** database.
 
@@ -28,6 +28,8 @@ The **Curo Engine** (*Curo Smart Pharmacy Management System*) transforms traditi
 | :---: | 
 | ![3-Tier Architecture](screenshot/architecture.jpg) | 
 
+
+  
 
 | Login & Authentication |
 | :---: |
@@ -120,11 +122,11 @@ curo-pharmacy-system/
 │   ├── flatlaf.jar
 │   └── mssql-jdbc.jar
 ├── screenshots/
-│   ├── architecture.png
-│   ├── login.png
-│   ├── dashboard.png
-│   ├── billing.png
-│   └── inventory.png
+│   ├── architecture.jpg
+│   ├── login.jpg
+│   ├── dashboard.jpg
+│   ├── billing.jpg
+│   └── inventory.jpg
 ├── src/
 │   ├── Main.java
 │   ├── alerts/
