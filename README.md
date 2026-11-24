@@ -26,15 +26,15 @@ The **Curo Engine** (*Curo Smart Pharmacy Management System*) transforms traditi
 
 | 3-Tier Architecture | Login & Authentication |
 | :---: | :---: |
-| ![3-Tier Architecture](screenshots/architecture.jpg) | ![Login Screen](screenshots/login.jpg) |
+| ![3-Tier Architecture](screenshot/architecture.jpg) | ![Login Screen](screenshot/login.jpg) |
 
 | Main Dashboard Overview | FEFO Billing (POS) & Thermal Receipt |
 | :---: | :---: |
-| ![Dashboard](screenshots/dashboard.jpg) | ![Billing POS](screenshots/billing.jpg) |
+| ![Dashboard](screenshot/dashboard.jpg) | ![Billing POS](screenshot/billing.jpg) |
 
 | Batch-Wise Inventory & Smart Alerts | |
 | :---: | :---: |
-| ![Inventory & Alerts](screenshots/inventory.jpg) | |
+| ![Inventory & Alerts](screenshot/inventory.jpg) | |
 
 ---
 
