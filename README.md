@@ -26,15 +26,15 @@ The **Curo Engine** (*Curo Smart Pharmacy Management System*) transforms traditi
 
 | 3-Tier Architecture | Login & Authentication |
 | :---: | :---: |
-| ![3-Tier Architecture](screenshots/architecture.png) | ![Login Screen](screenshots/login.png) |
+| ![3-Tier Architecture](screenshots/architecture.jpg) | ![Login Screen](screenshots/login.jpg) |
 
 | Main Dashboard Overview | FEFO Billing (POS) & Thermal Receipt |
 | :---: | :---: |
-| ![Dashboard](screenshots/dashboard.png) | ![Billing POS](screenshots/billing.png) |
+| ![Dashboard](screenshots/dashboard.jpg) | ![Billing POS](screenshots/billing.jpg) |
 
 | Batch-Wise Inventory & Smart Alerts | |
 | :---: | :---: |
-| ![Inventory & Alerts](screenshots/inventory.png) | |
+| ![Inventory & Alerts](screenshots/inventory.jpg) | |
 
 ---
 
@@ -190,7 +190,7 @@ cd curo-pharmacy-system
 ```properties
 db.url=jdbc:sqlserver://localhost\\SQLEXPRESS01;databaseName=curo_db;encrypt=true;trustServerCertificate=true;
 db.user=curoAdmin
-db.password=ict25954
+db.password=YOUR_PASSWORD
 ```
 
 ### 5. Launch the Application
